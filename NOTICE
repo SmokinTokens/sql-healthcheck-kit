@@ -1,0 +1,23 @@
+sql-healthcheck-kit
+Copyright (c) 2026 Smokin' Tokens. Licensed under the MIT License (see LICENSE).
+
+This repository contains only original code. It does not contain, copy or
+modify any third-party SQL scripts.
+
+The optional DBA toolkit installer (toolkit/) calls the dbatools PowerShell
+module. dbatools downloads the tools below from their upstream projects at
+install time and installs them unmodified. Each tool stays under its own
+licence. This repository does not relicense any of them.
+
+  dbatools                          MIT        https://github.com/dataplat/dbatools
+  SQL Server First Responder Kit    MIT        https://github.com/BrentOzarULTD/SQL-Server-First-Responder-Kit
+  SQL Server Maintenance Solution   MIT        https://github.com/olahallengren/sql-server-maintenance-solution
+  sp_WhoIsActive                    GPL-3.0    https://github.com/amachanic/sp_whoisactive
+  DarlingData                       MIT        https://github.com/erikdarlingdata/DarlingData
+
+sp_WhoIsActive is licensed under the GNU General Public License v3.0. Its
+full licence text and source are at the upstream link above. The installer
+does not change it.
+
+Names of these projects and their authors are used only to identify the
+tools. Their authors do not sponsor, endorse or support this project.
