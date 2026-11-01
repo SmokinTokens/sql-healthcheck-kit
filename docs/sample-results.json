@@ -1,0 +1,379 @@
+{
+ "started": "2026-01-15T09:00:00",
+ "secs": 2.3,
+ "probe": {
+  "sysadmin": "0",
+  "control_server": "0",
+  "alter_any_login": "0",
+  "alter_settings": "0",
+  "alter_any_database": "0",
+  "create_any_database": "0",
+  "select_all_user_securables": "0",
+  "impersonate_any_login": "0",
+  "alter_any_connection": "0",
+  "alter_server_state": "0",
+  "alter_any_linked_server": "0",
+  "alter_any_credential": "0",
+  "alter_any_server_role": "0",
+  "administer_bulk_operations": "0",
+  "shutdown": "0",
+  "alter_trace": "0",
+  "alter_any_event_session": "0",
+  "alter_any_endpoint": "0",
+  "alter_resources": "0",
+  "alter_any_availability_group": "0",
+  "alter_any_server_audit": "0",
+  "alter_any_event_notification": "0",
+  "external_access_assembly": "0",
+  "unsafe_assembly": "0",
+  "authenticate_server": "0",
+  "view_server_state": "1",
+  "view_any_definition": "1"
+ },
+ "powerful": [],
+ "dbs": [
+  "DemoShop"
+ ],
+ "skipped_dbs": [],
+ "results": {
+  "server": {
+   "S01": {
+    "rows": [
+     [
+      "16.0.4305.5",
+      "RTM",
+      "Developer Edition (64-bit)",
+      "4",
+      "16384",
+      "0"
+     ]
+    ]
+   },
+   "S02": {
+    "rows": [
+     [
+      "model",
+      "FULL",
+      "NEVER"
+     ],
+     [
+      "master",
+      "SIMPLE",
+      "NEVER"
+     ],
+     [
+      "msdb",
+      "SIMPLE",
+      "NEVER"
+     ]
+    ]
+   },
+   "S03": {
+    "rows": [
+     [
+      "DemoShop",
+      "NEVER"
+     ]
+    ]
+   },
+   "S04": {
+    "rows": [
+     [
+      "DemoShop",
+      "AUTO_SHRINK ON; PAGE_VERIFY NONE;"
+     ]
+    ]
+   },
+   "S05": {
+    "rows": [
+     [
+      "DemoShop",
+      "130",
+      "160"
+     ]
+    ]
+   },
+   "S06": {
+    "rows": [
+     [
+      "master",
+      "master",
+      "ROWS",
+      "10%",
+      "4"
+     ],
+     [
+      "master",
+      "mastlog",
+      "LOG",
+      "10%",
+      "0"
+     ],
+     [
+      "msdb",
+      "MSDBData",
+      "ROWS",
+      "10%",
+      "15"
+     ],
+     [
+      "msdb",
+      "MSDBLog",
+      "LOG",
+      "10%",
+      "1"
+     ],
+     [
+      "DemoShop",
+      "DemoShop",
+      "ROWS",
+      "10%",
+      "37"
+     ]
+    ]
+   },
+   "S07": {
+    "rows": [
+     [
+      "cost threshold for parallelism",
+      "5"
+     ],
+     [
+      "max degree of parallelism",
+      "0"
+     ],
+     [
+      "max server memory (MB)",
+      "2147483647"
+     ],
+     [
+      "backup compression default",
+      "0"
+     ],
+     [
+      "optimize for ad hoc workloads",
+      "0"
+     ]
+    ]
+   },
+   "S08": {
+    "rows": [
+     [
+      "sa",
+      "SQL_LOGIN",
+      "enabled"
+     ],
+     [
+      "BUILTIN\\Administrators",
+      "WINDOWS_GROUP",
+      "enabled"
+     ],
+     [
+      "NT AUTHORITY\\NETWORK SERVICE",
+      "WINDOWS_LOGIN",
+      "enabled"
+     ],
+     [
+      "legacy_app",
+      "SQL_LOGIN",
+      "enabled"
+     ]
+    ]
+   },
+   "S09": {
+    "rows": [
+     [
+      "legacy_app",
+      "off",
+      "off",
+      "enabled"
+     ]
+    ]
+   },
+   "S10": {
+    "rows": [
+     [
+      "sa"
+     ]
+    ]
+   },
+   "S11": {
+    "rows": []
+   },
+   "S12": {
+    "rows": [
+     [
+      "LCK_M_U",
+      "5.2",
+      "30.5"
+     ],
+     [
+      "CHKPT",
+      "3.4",
+      "20.0"
+     ],
+     [
+      "WRITELOG",
+      "1.6",
+      "9.7"
+     ],
+     [
+      "PAGEIOLATCH_UP",
+      "1.1",
+      "6.4"
+     ],
+     [
+      "SLEEP_PHYSMASTERDBREADY",
+      "1.0",
+      "5.7"
+     ],
+     [
+      "CXCONSUMER",
+      ".8",
+      "4.9"
+     ],
+     [
+      "LCK_M_S",
+      ".7",
+      "4.1"
+     ],
+     [
+      "CXSYNC_PORT",
+      ".5",
+      "3.1"
+     ]
+    ]
+   },
+   "S13": {
+    "rows": [
+     [
+      "DemoShop",
+      "[DemoShop].[dbo].[Orders]",
+      "[Status]",
+      "[OrderDate]",
+      "[Total]",
+      "3655.7"
+     ]
+    ]
+   },
+   "S14": {
+    "rows": [
+     [
+      "DemoShop",
+      "40",
+      "669",
+      "78960",
+      "SELECT @x = SUM(Qty * Price) FROM dbo.OrderLines WHERE Sku = CONCAT('?', @i)"
+     ],
+     [
+      "DemoShop",
+      "40",
+      "308",
+      "33800",
+      "SELECT @x = SUM(Total) FROM dbo.Orders WHERE Status = (@i % ?) AND OrderDate > DATEADD(day, -?, sysdatetime())"
+     ],
+     [
+      "DemoShop",
+      "40",
+      "44",
+      "4600",
+      "SELECT @x = COUNT(*) FROM dbo.Customers WHERE Email LIKE CONCAT('?', @i, '?')"
+     ],
+     [
+      "DemoShop",
+      "1",
+      "2",
+      "2653",
+      "UPDATE TOP (?) dbo.Orders SET CustomerID = CustomerID + ? WHERE OrderID % ? = ?"
+     ],
+     [
+      "?",
+      "1",
+      "0",
+      "197",
+      "select @configcount = count(*) from sys.configurations where lower(name collate Latin1_General_CI_AS) like"
+     ]
+    ]
+   }
+  },
+  "db": {
+   "DemoShop": {
+    "D01": {
+     "rows": [
+      [
+       "dbo.OrderLines",
+       "400000"
+      ]
+     ]
+    },
+    "D02": {
+     "rows": [
+      [
+       "dbo.Orders",
+       "IX_Orders_Cust",
+       "IX_Orders_Cust_Dup",
+       "2"
+      ]
+     ]
+    },
+    "D03": {
+     "rows": [
+      [
+       "dbo.Orders",
+       "IX_Orders_Cust",
+       "IX_Orders_Cust_Date"
+      ],
+      [
+       "dbo.Orders",
+       "IX_Orders_Cust_Dup",
+       "IX_Orders_Cust_Date"
+      ]
+     ]
+    },
+    "D04": {
+     "rows": [
+      [
+       "dbo.Orders",
+       "FK_Orders_Customers",
+       "FK"
+      ]
+     ]
+    },
+    "D05": {
+     "rows": [
+      [
+       "dbo.Orders",
+       "IX_Orders_Cust",
+       "1",
+       "0"
+      ],
+      [
+       "dbo.Orders",
+       "IX_Orders_Cust_Date",
+       "1",
+       "0"
+      ]
+     ]
+    },
+    "D06": {
+     "rows": [
+      [
+       "DemoShop",
+       "ROWS",
+       "41",
+       "unlimited"
+      ],
+      [
+       "DemoShop_log",
+       "LOG",
+       "264",
+       "2097152"
+      ]
+     ]
+    }
+   }
+  }
+ },
+ "full_query_text": false,
+ "_note": "Synthetic sample: the DemoShop demo database from lab/seed-demo.sql in a throwaway SQL Server 2022 container. CPU, RAM and run time are placeholders."
+}

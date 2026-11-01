@@ -9,15 +9,40 @@ module. dbatools downloads the tools below from their upstream projects at
 install time and installs them unmodified. Each tool stays under its own
 licence. This repository does not relicense any of them.
 
-  dbatools                          MIT        https://github.com/dataplat/dbatools
-  SQL Server First Responder Kit    MIT        https://github.com/BrentOzarULTD/SQL-Server-First-Responder-Kit
-  SQL Server Maintenance Solution   MIT        https://github.com/olahallengren/sql-server-maintenance-solution
-  sp_WhoIsActive                    GPL-3.0    https://github.com/amachanic/sp_whoisactive
-  DarlingData                       MIT        https://github.com/erikdarlingdata/DarlingData
+Credits
+-------
 
-sp_WhoIsActive is licensed under the GNU General Public License v3.0. Its
-full licence text and source are at the upstream link above. The installer
-does not change it.
+SQL Server First Responder Kit (sp_Blitz, sp_BlitzCache, sp_BlitzIndex, ...)
+  Copyright (c) Brent Ozar Unlimited and contributors.
+  Licence: MIT.
+  Source:  https://github.com/BrentOzarULTD/SQL-Server-First-Responder-Kit
+  Licence text: third_party_licenses/SQL-Server-First-Responder-Kit-MIT.txt
 
-Names of these projects and their authors are used only to identify the
-tools. Their authors do not sponsor, endorse or support this project.
+SQL Server Maintenance Solution (DatabaseBackup, DatabaseIntegrityCheck,
+IndexOptimize, CommandExecute)
+  Copyright (c) Ola Hallengren.
+  Licence: MIT.
+  Source:  https://github.com/olahallengren/sql-server-maintenance-solution
+  Licence text: third_party_licenses/sql-server-maintenance-solution-MIT.txt
+
+sp_WhoIsActive
+  Copyright (c) Adam Machanic.
+  Licence: GNU General Public License v3.0 (GPL-3.0).
+  Source:  https://github.com/amachanic/sp_whoisactive
+  Licence text: third_party_licenses/sp_WhoIsActive-GPL-3.0.txt
+  sp_WhoIsActive stays under GPL-3.0. It is not relicensed under MIT. The
+  installer fetches it unmodified; its source is at the link above.
+
+Also used by the toolkit installer (not bundled):
+
+  dbatools        MIT   https://github.com/dataplat/dbatools
+  DarlingData     MIT   https://github.com/erikdarlingdata/DarlingData
+
+The licence texts in third_party_licenses/ are verbatim copies from each
+project's repository, kept here for reference.
+
+No endorsement
+--------------
+Names of these projects and their authors are used only to identify and credit
+the tools. Their authors do not sponsor, endorse or support this project, and
+this project is not affiliated with them.

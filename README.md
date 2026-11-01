@@ -1,8 +1,10 @@
 # sql-healthcheck-kit
 
-Read-only health checks for Microsoft SQL Server. One command produces a Markdown report
-(and JSON) of backup gaps, risky settings, security issues and schema problems, each with a
-plain-language fix.
+Read-only health checks for Microsoft SQL Server. One command produces a Markdown report,
+a self-contained HTML report (one file, no scripts or external assets, severity colours) and
+JSON of backup gaps, risky settings, security issues and schema problems, each with a
+plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) and
+[docs/sample.html](docs/sample.html).
 
 - **Read-only by design.** Every check is a single `SELECT` over catalog views, DMVs and
   `msdb.dbo.backupset`. No `DBCC`, no `xp_`/`sp_` calls, no writes, and no user table rows.
@@ -89,7 +91,9 @@ AUTO_CLOSE is on (it empties DMV stats for that database).
    # Self-signed certificate (lab): add --trust-cert
    ```
 
-4. Read `report-myserver/report.md`. Remove the login when done:
+4. Read `report-myserver/report.md` or open `report-myserver/report.html` in a browser
+   (same content; the HTML file has no scripts and loads nothing from the network).
+   Remove the login when done:
    `sqlcmd -S myserver -E -i sql/remove-reader.sql`.
 
 Exit code: 0 = ran clean, 1 = one or more checks errored (listed in the report).
@@ -113,7 +117,9 @@ If docker needs sudo, keep the password variables across it:
 
 Result on SQL Server 2022 (16.0): 3 high, 7 medium, 5 low findings. All planted defects are
 found except AUTO_CLOSE: the lab workload turns AUTO_CLOSE off on purpose, so the DMV-based
-sections have data to show. See [docs/sample-report.md](docs/sample-report.md).
+sections have data to show. See [docs/sample.md](docs/sample.md) and
+[docs/sample.html](docs/sample.html) (demo data only; CPU, RAM and run time are
+placeholders). Rebuild both from `docs/sample-results.json` with `python3 docs/make-samples.py`.
 
 **Never run `lab/seed-demo.sql` on a real server.** It plants defects on purpose.
 
@@ -142,7 +148,7 @@ What is different here:
 | Install on the server | Nothing. Queries are sent from the client | Stored procedures, usually in `master` |
 | Checks | 20 single `SELECT` checks | Hundreds of checks across several procedures |
 | Login | Least-privilege reader; refuses to run as sysadmin or any write-capable login | Not restricted; some checks need high rights (e.g. trace-flag checks via `DBCC TRACESTATUS`) |
-| Output | One Markdown + JSON report file | Result sets in SSMS, optional output tables |
+| Output | One Markdown report, one self-contained HTML report, and JSON | Result sets in SSMS, optional output tables |
 | Query text | Literals redacted by default | Full query text and plans |
 
 Use this kit when you may not install code on a server (a client's box, a locked-down
@@ -161,6 +167,25 @@ digit-glued keywords like `1DROP` and quotes hidden in `[..]` or `".."` are refu
 fail-closed privilege probes (system databases included), the redactor, row-count checks
 and report escaping.
 
+## Credits
+
+This kit stands on the work of the SQL Server community. The optional DBA toolkit
+(`toolkit/`) installs these tools through [dbatools](https://github.com/dataplat/dbatools).
+They are fetched from upstream at install time, unmodified, and are not stored in this
+repository:
+
+| Tool | Author | Licence |
+|---|---|---|
+| [SQL Server First Responder Kit](https://github.com/BrentOzarULTD/SQL-Server-First-Responder-Kit) | Brent Ozar Unlimited and contributors | MIT ([text](third_party_licenses/SQL-Server-First-Responder-Kit-MIT.txt)) |
+| [SQL Server Maintenance Solution](https://github.com/olahallengren/sql-server-maintenance-solution) | Ola Hallengren | MIT ([text](third_party_licenses/sql-server-maintenance-solution-MIT.txt)) |
+| [sp_WhoIsActive](https://github.com/amachanic/sp_whoisactive) | Adam Machanic | GPL-3.0 ([text](third_party_licenses/sp_WhoIsActive-GPL-3.0.txt)) |
+
+sp_WhoIsActive stays under GPL-3.0; it is not relicensed under this repository's MIT
+licence. See [NOTICE](NOTICE) for the full attribution. These names are used only to
+identify and credit the tools: their authors do not sponsor or endorse this project, and
+it is not affiliated with them.
+
 ## License
 
-MIT. See [LICENSE](LICENSE). Findings are advice; test every fix in a change window first.
+MIT for this repository's own code. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Findings are advice; test every fix in a change window first.

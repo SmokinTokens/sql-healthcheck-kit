@@ -1,4 +1,4 @@
-"""Run the read-only checks with sqlcmd and write a Markdown report + JSON.
+"""Run the read-only checks with sqlcmd and write a Markdown report, an HTML report and JSON.
 
 The password is never taken on the command line. For SQL logins, set it in the
 environment variable SQLCMDPASSWORD (sqlcmd reads it there). For Windows
@@ -329,14 +329,18 @@ def main(argv=None):
     conn = Sqlcmd(a.server, a.user, a.windows_auth, a.trust_cert, a.docker, a.sqlcmd,
                   docker_cmd=a.docker_cmd)
     data = collect(conn, a.full_query_text, a.allow_powerful_login)
+    from .html_report import render_html
     md, counts, errors = render_markdown(data)
+    page, _, _ = render_html(data)
     os.makedirs(a.out, exist_ok=True)
-    rp, jp = os.path.join(a.out, "report.md"), os.path.join(a.out, "results.json")
-    with open(rp, "w") as f:
+    rp, hp, jp = (os.path.join(a.out, n) for n in ("report.md", "report.html", "results.json"))
+    with open(rp, "w", encoding="utf-8") as f:
         f.write(md)
-    with open(jp, "w") as f:
+    with open(hp, "w", encoding="utf-8") as f:
+        f.write(page)
+    with open(jp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=1)
-    print(json.dumps({"report": rp, "json": jp, "counts": counts, "errors": len(errors),
+    print(json.dumps({"report": rp, "html": hp, "json": jp, "counts": counts, "errors": len(errors),
                       "databases": len(data["dbs"]), "secs": data["secs"]}))
     return 1 if errors else 0
 

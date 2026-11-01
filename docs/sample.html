@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>SQL Server Health Check (sample, demo data)</title><style>
+:root{--hi:#b42318;--hi-bg:#fef3f2;--me:#b54708;--me-bg:#fffaeb;--lo:#175cd3;--lo-bg:#eff8ff;
+--ink:#1d2939;--mute:#475467;--line:#e4e7ec;--card:#fff;--page:#f9fafb}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:15px/1.5 -apple-system,"Segoe UI",Roboto,
+Helvetica,Arial,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:26px;margin:0 0 4px}h2{font-size:20px;margin:32px 0 12px;border-bottom:1px solid var(--line);
+padding-bottom:6px}h3{font-size:16px;margin:0 0 8px}
+.meta{color:var(--mute);margin:0 0 4px;padding-left:18px}.meta li{margin:2px 0}
+.note{background:var(--me-bg);border-left:4px solid var(--me);padding:8px 12px;margin:8px 0;border-radius:4px}
+.tiles{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
+.tile{flex:1 1 140px;border-radius:8px;padding:12px 16px;background:var(--card);border:1px solid var(--line)}
+.tile b{display:block;font-size:28px;line-height:1.1}
+.tile.high b{color:var(--hi)}.tile.medium b{color:var(--me)}.tile.low b{color:var(--lo)}
+.card{background:var(--card);border:1px solid var(--line);border-left-width:6px;border-radius:8px;
+padding:14px 16px;margin:12px 0;overflow-x:auto}
+.card.high{border-left-color:var(--hi)}.card.medium{border-left-color:var(--me)}.card.low{border-left-color:var(--lo)}
+.card.info{border-left-color:var(--line)}
+.sev{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.04em;padding:1px 8px;border-radius:10px;
+margin-right:6px;vertical-align:1px}
+.sev.high{background:var(--hi-bg);color:var(--hi)}.sev.medium{background:var(--me-bg);color:var(--me)}
+.sev.low{background:var(--lo-bg);color:var(--lo)}
+.where{color:var(--mute);font-weight:400}
+table{border-collapse:collapse;width:100%;margin:6px 0 8px;font-size:13px}
+th,td{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}
+th{background:var(--page);font-weight:600}td{font-family:ui-monospace,Consolas,Menlo,monospace;word-break:break-word}
+.fix{margin:6px 0 0}.fix b{color:var(--ink)}
+.summary td,.summary th{font-family:inherit}
+footer{color:var(--mute);margin-top:32px;font-size:13px}
+@media print{body{background:#fff}.card{break-inside:avoid}}
+</style></head><body><main>
+<h1>SQL Server Health Check (sample, demo data)</h1>
+<ul class="meta">
+<li>Run: 2026-01-15T09:00:00, 2.3 s, 14 instance checks + 6 per-database checks over 1 user database(s).</li>
+<li>Server: SQL Server 16.0.4305.5 RTM, Developer Edition (64-bit), 4 CPUs, 16384 MB RAM, up 0 h.</li>
+<li>Access: catalog views and DMVs only, sent as SELECT statements. No user table rows read; no data or settings changed.</li>
+<li>Query text: literals redacted (strings, numbers, hex replaced with ?).</li>
+</ul>
+<p class="note">NOTE: uptime is 0 h (&lt; 7 days). Wait, index-usage and query stats reset at restart, so performance sections may be incomplete.</p>
+<h2>Summary</h2><div class="tiles">
+<div class="tile high"><b>3</b>high</div>
+<div class="tile medium"><b>7</b>medium</div>
+<div class="tile low"><b>5</b>low</div>
+</div>
+<table class="summary"><thead><tr><th>Severity</th><th>ID</th><th>Check</th><th>Where</th><th>Items</th></tr></thead><tbody>
+<tr><td><span class="sev high">HIGH</span></td><td>S02</td><td>Databases without a recent full backup (7 days)</td><td>(instance)</td><td>3</td></tr>
+<tr><td><span class="sev high">HIGH</span></td><td>S03</td><td>FULL recovery databases without log backups (24 h)</td><td>(instance)</td><td>1</td></tr>
+<tr><td><span class="sev high">HIGH</span></td><td>S04</td><td>Risky database options</td><td>(instance)</td><td>1</td></tr>
+<tr><td><span class="sev medium">MEDIUM</span></td><td>D01</td><td>Large heaps (tables without a clustered index)</td><td>DemoShop</td><td>1</td></tr>
+<tr><td><span class="sev medium">MEDIUM</span></td><td>D02</td><td>Duplicate indexes (same key columns)</td><td>DemoShop</td><td>1</td></tr>
+<tr><td><span class="sev medium">MEDIUM</span></td><td>S05</td><td>Old compatibility level</td><td>(instance)</td><td>1</td></tr>
+<tr><td><span class="sev medium">MEDIUM</span></td><td>S07</td><td>Instance settings left at defaults</td><td>(instance)</td><td>5</td></tr>
+<tr><td><span class="sev medium">MEDIUM</span></td><td>S08</td><td>Sysadmin members (non-system)</td><td>(instance)</td><td>4</td></tr>
+<tr><td><span class="sev medium">MEDIUM</span></td><td>S09</td><td>SQL logins with password policy off</td><td>(instance)</td><td>1</td></tr>
+<tr><td><span class="sev medium">MEDIUM</span></td><td>S13</td><td>Top missing-index requests</td><td>(instance)</td><td>1</td></tr>
+<tr><td><span class="sev low">LOW</span></td><td>D03</td><td>Left-prefix overlapping indexes</td><td>DemoShop</td><td>2</td></tr>
+<tr><td><span class="sev low">LOW</span></td><td>D04</td><td>Untrusted foreign keys / check constraints</td><td>DemoShop</td><td>1</td></tr>
+<tr><td><span class="sev low">LOW</span></td><td>D05</td><td>Write-only indexes (writes, no reads since startup)</td><td>DemoShop</td><td>2</td></tr>
+<tr><td><span class="sev low">LOW</span></td><td>S06</td><td>Percent-based file growth</td><td>(instance)</td><td>5</td></tr>
+<tr><td><span class="sev low">LOW</span></td><td>S10</td><td>&#x27;sa&#x27; login enabled</td><td>(instance)</td><td>1</td></tr>
+</tbody></table>
+<h2>Findings</h2>
+<section class="card high"><h3><span class="sev high">HIGH</span>S02 Databases without a recent full backup (7 days) <span class="where">(Recoverability, (instance))</span></h3><table><thead><tr><th>database</th><th>recovery_model</th><th>last_full</th></tr></thead><tbody><tr><td>model</td><td>FULL</td><td>NEVER</td></tr><tr><td>master</td><td>SIMPLE</td><td>NEVER</td></tr><tr><td>msdb</td><td>SIMPLE</td><td>NEVER</td></tr></tbody></table><p class="fix"><b>Fix:</b> Schedule full backups (weekly or nightly) and test a restore. System databases (master, msdb, model) need backups too.</p></section>
+<section class="card high"><h3><span class="sev high">HIGH</span>S03 FULL recovery databases without log backups (24 h) <span class="where">(Recoverability, (instance))</span></h3><table><thead><tr><th>database</th><th>last_log_backup</th></tr></thead><tbody><tr><td>DemoShop</td><td>NEVER</td></tr></tbody></table><p class="fix"><b>Fix:</b> Add log backups every 15-60 min, or switch to SIMPLE if point-in-time restore is not needed. The log grows without limit until then.</p></section>
+<section class="card high"><h3><span class="sev high">HIGH</span>S04 Risky database options <span class="where">(Configuration, (instance))</span></h3><table><thead><tr><th>database</th><th>options</th></tr></thead><tbody><tr><td>DemoShop</td><td>AUTO_SHRINK ON; PAGE_VERIFY NONE;</td></tr></tbody></table><p class="fix"><b>Fix:</b> Set AUTO_SHRINK OFF, AUTO_CLOSE OFF, PAGE_VERIFY CHECKSUM, TRUSTWORTHY OFF (in a change window).</p></section>
+<section class="card medium"><h3><span class="sev medium">MEDIUM</span>D01 Large heaps (tables without a clustered index) <span class="where">(Schema, DemoShop)</span></h3><table><thead><tr><th>table</th><th>rows</th></tr></thead><tbody><tr><td>dbo.OrderLines</td><td>400000</td></tr></tbody></table><p class="fix"><b>Fix:</b> Add a narrow, ever-increasing clustered key, unless the heap is a staging table by design.</p></section>
+<section class="card medium"><h3><span class="sev medium">MEDIUM</span>D02 Duplicate indexes (same key columns) <span class="where">(Schema, DemoShop)</span></h3><table><thead><tr><th>table</th><th>index_a</th><th>index_b</th><th>key_column_ids</th></tr></thead><tbody><tr><td>dbo.Orders</td><td>IX_Orders_Cust</td><td>IX_Orders_Cust_Dup</td><td>2</td></tr></tbody></table><p class="fix"><b>Fix:</b> Drop the extra copy after checking hints and constraints. Each copy slows every write.</p></section>
+<section class="card medium"><h3><span class="sev medium">MEDIUM</span>S05 Old compatibility level <span class="where">(Configuration, (instance))</span></h3><table><thead><tr><th>database</th><th>compat_level</th><th>server_level</th></tr></thead><tbody><tr><td>DemoShop</td><td>130</td><td>160</td></tr></tbody></table><p class="fix"><b>Fix:</b> Plan a tested upgrade of the compatibility level (turn on Query Store first to catch plan regressions).</p></section>
+<section class="card medium"><h3><span class="sev medium">MEDIUM</span>S07 Instance settings left at defaults <span class="where">(Configuration, (instance))</span></h3><table><thead><tr><th>setting</th><th>value</th></tr></thead><tbody><tr><td>cost threshold for parallelism</td><td>5</td></tr><tr><td>max degree of parallelism</td><td>0</td></tr><tr><td>max server memory (MB)</td><td>2147483647</td></tr><tr><td>backup compression default</td><td>0</td></tr><tr><td>optimize for ad hoc workloads</td><td>0</td></tr></tbody></table><p class="fix"><b>Fix:</b> Cap max server memory (leave OS headroom), raise cost threshold (~50), turn on optimize for ad hoc workloads and backup compression.</p></section>
+<section class="card medium"><h3><span class="sev medium">MEDIUM</span>S08 Sysadmin members (non-system) <span class="where">(Security, (instance))</span></h3><table><thead><tr><th>login</th><th>type</th><th>state</th></tr></thead><tbody><tr><td>sa</td><td>SQL_LOGIN</td><td>enabled</td></tr><tr><td>BUILTIN\Administrators</td><td>WINDOWS_GROUP</td><td>enabled</td></tr><tr><td>NT AUTHORITY\NETWORK SERVICE</td><td>WINDOWS_LOGIN</td><td>enabled</td></tr><tr><td>legacy_app</td><td>SQL_LOGIN</td><td>enabled</td></tr></tbody></table><p class="fix"><b>Fix:</b> Keep sysadmin to named admins only. Application logins get database roles, not sysadmin.</p></section>
+<section class="card medium"><h3><span class="sev medium">MEDIUM</span>S09 SQL logins with password policy off <span class="where">(Security, (instance))</span></h3><table><thead><tr><th>login</th><th>policy</th><th>expiry</th><th>state</th></tr></thead><tbody><tr><td>legacy_app</td><td>off</td><td>off</td><td>enabled</td></tr></tbody></table><p class="fix"><b>Fix:</b> Turn CHECK_POLICY ON and rotate the password.</p></section>
+<section class="card medium"><h3><span class="sev medium">MEDIUM</span>S13 Top missing-index requests <span class="where">(Performance, (instance))</span></h3><table><thead><tr><th>database</th><th>table</th><th>equality</th><th>inequality</th><th>include</th><th>score</th></tr></thead><tbody><tr><td>DemoShop</td><td>[DemoShop].[dbo].[Orders]</td><td>[Status]</td><td>[OrderDate]</td><td>[Total]</td><td>3655.7</td></tr></tbody></table><p class="fix"><b>Fix:</b> Review each request against existing indexes; add only the top few after testing. Do not add all of them.</p></section>
+<section class="card low"><h3><span class="sev low">LOW</span>D03 Left-prefix overlapping indexes <span class="where">(Schema, DemoShop)</span></h3><table><thead><tr><th>table</th><th>narrower_index</th><th>covered_by</th></tr></thead><tbody><tr><td>dbo.Orders</td><td>IX_Orders_Cust</td><td>IX_Orders_Cust_Date</td></tr><tr><td>dbo.Orders</td><td>IX_Orders_Cust_Dup</td><td>IX_Orders_Cust_Date</td></tr></tbody></table><p class="fix"><b>Fix:</b> The narrower index is usually redundant; confirm usage before dropping.</p></section>
+<section class="card low"><h3><span class="sev low">LOW</span>D04 Untrusted foreign keys / check constraints <span class="where">(Schema, DemoShop)</span></h3><table><thead><tr><th>table</th><th>constraint</th><th>kind</th></tr></thead><tbody><tr><td>dbo.Orders</td><td>FK_Orders_Customers</td><td>FK</td></tr></tbody></table><p class="fix"><b>Fix:</b> Re-validate WITH CHECK CHECK CONSTRAINT in a change window so the optimizer can trust it.</p></section>
+<section class="card low"><h3><span class="sev low">LOW</span>D05 Write-only indexes (writes, no reads since startup) <span class="where">(Schema, DemoShop)</span></h3><table><thead><tr><th>table</th><th>index</th><th>writes</th><th>reads</th></tr></thead><tbody><tr><td>dbo.Orders</td><td>IX_Orders_Cust</td><td>1</td><td>0</td></tr><tr><td>dbo.Orders</td><td>IX_Orders_Cust_Date</td><td>1</td><td>0</td></tr></tbody></table><p class="fix"><b>Fix:</b> Candidates to drop only after a full business cycle of uptime (month-end included).</p></section>
+<section class="card low"><h3><span class="sev low">LOW</span>S06 Percent-based file growth <span class="where">(Configuration, (instance))</span></h3><table><thead><tr><th>database</th><th>file</th><th>type</th><th>growth</th><th>size_mb</th></tr></thead><tbody><tr><td>master</td><td>master</td><td>ROWS</td><td>10%</td><td>4</td></tr><tr><td>master</td><td>mastlog</td><td>LOG</td><td>10%</td><td>0</td></tr><tr><td>msdb</td><td>MSDBData</td><td>ROWS</td><td>10%</td><td>15</td></tr><tr><td>msdb</td><td>MSDBLog</td><td>LOG</td><td>10%</td><td>1</td></tr><tr><td>DemoShop</td><td>DemoShop</td><td>ROWS</td><td>10%</td><td>37</td></tr></tbody></table><p class="fix"><b>Fix:</b> Use fixed growth (for example 256 MB data, 128 MB log).</p></section>
+<section class="card low"><h3><span class="sev low">LOW</span>S10 &#x27;sa&#x27; login enabled <span class="where">(Security, (instance))</span></h3><table><thead><tr><th>login</th></tr></thead><tbody><tr><td>sa</td></tr></tbody></table><p class="fix"><b>Fix:</b> Disable or rename sa once named admin logins exist.</p></section>
+<h2>Context (no action implied)</h2>
+<section class="card info"><h3>S12 Top waits since startup</h3><table><thead><tr><th>wait_type</th><th>seconds</th><th>pct</th></tr></thead><tbody><tr><td>LCK_M_U</td><td>5.2</td><td>30.5</td></tr><tr><td>CHKPT</td><td>3.4</td><td>20.0</td></tr><tr><td>WRITELOG</td><td>1.6</td><td>9.7</td></tr><tr><td>PAGEIOLATCH_UP</td><td>1.1</td><td>6.4</td></tr><tr><td>SLEEP_PHYSMASTERDBREADY</td><td>1.0</td><td>5.7</td></tr><tr><td>CXCONSUMER</td><td>.8</td><td>4.9</td></tr><tr><td>LCK_M_S</td><td>.7</td><td>4.1</td></tr><tr><td>CXSYNC_PORT</td><td>.5</td><td>3.1</td></tr></tbody></table></section>
+<section class="card info"><h3>S14 Top queries by total CPU</h3><table><thead><tr><th>database</th><th>execs</th><th>cpu_ms</th><th>logical_reads</th><th>statement_110ch</th></tr></thead><tbody><tr><td>DemoShop</td><td>40</td><td>669</td><td>78960</td><td>SELECT @x = SUM(Qty * Price) FROM dbo.OrderLines WHERE Sku = CONCAT(&#x27;?&#x27;, @i)</td></tr><tr><td>DemoShop</td><td>40</td><td>308</td><td>33800</td><td>SELECT @x = SUM(Total) FROM dbo.Orders WHERE Status = (@i % ?) AND OrderDate &gt; DATEADD(day, -?, sysdatetime())</td></tr><tr><td>DemoShop</td><td>40</td><td>44</td><td>4600</td><td>SELECT @x = COUNT(*) FROM dbo.Customers WHERE Email LIKE CONCAT(&#x27;?&#x27;, @i, &#x27;?&#x27;)</td></tr><tr><td>DemoShop</td><td>1</td><td>2</td><td>2653</td><td>UPDATE TOP (?) dbo.Orders SET CustomerID = CustomerID + ? WHERE OrderID % ? = ?</td></tr><tr><td>?</td><td>1</td><td>0</td><td>197</td><td>select @configcount = count(*) from sys.configurations where lower(name collate Latin1_General_CI_AS) like</td></tr></tbody></table></section>
+<section class="card info"><h3>D06 File sizes - DemoShop</h3><table><thead><tr><th>file</th><th>type</th><th>size_mb</th><th>max_mb</th></tr></thead><tbody><tr><td>DemoShop</td><td>ROWS</td><td>41</td><td>unlimited</td></tr><tr><td>DemoShop_log</td><td>LOG</td><td>264</td><td>2097152</td></tr></tbody></table></section>
+<footer>Generated by sql-healthcheck-kit. Every fix is for your DBA to review and run in a change window.</footer></main></body></html>
