@@ -69,8 +69,10 @@ AUTO_CLOSE is on (it empties DMV stats for that database).
 
 S21 reads `sys.dm_io_virtual_file_stats` joined to `sys.master_files` (`VIEW SERVER STATE`)
 and shows logical file names only, never physical paths. Its numbers are averages since each
-file came online, so they hide short spikes; Microsoft treats about 10-15 ms per transfer as
-the point where users start to notice. The lab container's fast disk produces no S21 rows,
+file came online, so they hide short spikes; Microsoft puts the point where users start to
+notice at about 10-15 ms per transfer
+([Troubleshoot slow SQL Server performance caused by I/O issues](https://learn.microsoft.com/troubleshoot/sql/database-engine/performance/troubleshoot-sql-io-performance)).
+The lab container's fast disk produces no S21 rows,
 so this is what a finding looks like (illustrative values, not lab output):
 
 | database | file | type | reads | avg_read_ms | writes | avg_write_ms |

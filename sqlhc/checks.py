@@ -179,8 +179,8 @@ ORDER BY qs.total_worker_time DESC""",
         "id": "S21", "title": "Slow file I/O (avg latency >= 20 ms since startup)", "area": "Performance",
         "sql": """SELECT TOP (15) ISNULL(DB_NAME(vfs.database_id), CAST(vfs.database_id AS varchar(10))),
  mf.name, mf.type_desc,
- vfs.num_of_reads, CAST(1.0 * vfs.io_stall_read_ms / NULLIF(vfs.num_of_reads, 0) AS decimal(12,1)),
- vfs.num_of_writes, CAST(1.0 * vfs.io_stall_write_ms / NULLIF(vfs.num_of_writes, 0) AS decimal(12,1))
+ vfs.num_of_reads, ISNULL(CAST(1.0 * vfs.io_stall_read_ms / NULLIF(vfs.num_of_reads, 0) AS decimal(12,1)), 0),
+ vfs.num_of_writes, ISNULL(CAST(1.0 * vfs.io_stall_write_ms / NULLIF(vfs.num_of_writes, 0) AS decimal(12,1)), 0)
 FROM sys.dm_io_virtual_file_stats(NULL, NULL) vfs
 JOIN sys.master_files mf ON mf.database_id = vfs.database_id AND mf.file_id = vfs.file_id
 WHERE (vfs.num_of_reads >= 1000 AND vfs.io_stall_read_ms >= 20 * vfs.num_of_reads)

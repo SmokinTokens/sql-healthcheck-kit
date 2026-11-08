@@ -312,6 +312,17 @@ class IoLatencyTests(unittest.TestCase):
         self.assertIn("num_of_reads >= 1000 AND vfs.io_stall_read_ms >= 20 * vfs.num_of_reads", sql)
         self.assertIn("num_of_writes >= 1000 AND vfs.io_stall_write_ms >= 20 * vfs.num_of_writes", sql)
         self.assertEqual(sql.count("NULLIF("), 2)
+        # A file busy on one side only shows 0 for the other average, not NULL.
+        self.assertEqual(sql.count("ISNULL(CAST(1.0 * vfs.io_stall_"), 2)
+
+    def test_lab_output_parses_to_seven_columns(self):
+        # Shape of real sqlcmd output from the SQL Server 2022 lab (zero-threshold run).
+        out = ("master\x1fmaster\x1fROWS\x1f72\x1f.6\x1f162\x1f.5\n"
+               "DemoShop\x1fDemoShop_log\x1fLOG\x1f30\x1f.3\x1f2210\x1f.1\n\n(2 rows affected)\n")
+        d = [0]
+        rows = rows_of(out, len(self.S21["cols"]), d)
+        self.assertEqual(d[0], 0)
+        self.assertEqual(rows[1], ["DemoShop", "DemoShop_log", "LOG", "30", ".3", "2210", ".1"])
 
     def test_finding_renders_in_report(self):
         server = {c["id"]: {"rows": []} for c in SERVER_CHECKS}
