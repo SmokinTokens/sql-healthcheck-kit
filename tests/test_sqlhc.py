@@ -287,5 +287,45 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(DB_PRIV_PROBE["sql"].count("HAS_PERMS_BY_NAME") + 7, len(DB_PRIV_PROBE["cols"]))
 
 
+class IoLatencyTests(unittest.TestCase):
+    """S21: per-file I/O latency from sys.dm_io_virtual_file_stats."""
+    S21 = next(c for c in SERVER_CHECKS if c["id"] == "S21")
+
+    def test_shape_and_guard(self):
+        c = self.S21
+        guard(c["sql"])
+        self.assertEqual(c["severity"], "medium")
+        self.assertTrue(c["fix"])
+        # One output column per SELECT expression (7) and 7 names.
+        self.assertEqual(len(c["cols"]), 7)
+        self.assertIn("sys.dm_io_virtual_file_stats(NULL, NULL)", c["sql"])
+
+    def test_reads_only_view_server_state_objects(self):
+        sql = self.S21["sql"]
+        objects = set(re.findall(r"\bsys\.\w+", sql))
+        self.assertEqual(objects, {"sys.dm_io_virtual_file_stats", "sys.master_files"})
+        # No physical paths in reports (drive layout is sensitive).
+        self.assertNotIn("physical_name", sql)
+
+    def test_thresholds_and_divide_by_zero_safe(self):
+        sql = self.S21["sql"]
+        self.assertIn("num_of_reads >= 1000 AND vfs.io_stall_read_ms >= 20 * vfs.num_of_reads", sql)
+        self.assertIn("num_of_writes >= 1000 AND vfs.io_stall_write_ms >= 20 * vfs.num_of_writes", sql)
+        self.assertEqual(sql.count("NULLIF("), 2)
+
+    def test_finding_renders_in_report(self):
+        server = {c["id"]: {"rows": []} for c in SERVER_CHECKS}
+        server["S01"] = {"rows": [["16.0.1", "RTM", "Developer", "4", "8000", "300"]]}
+        server["S21"] = {"rows": [["DemoShop", "DemoShop_log", "LOG", "12", "0.4", "48210", "27.3"]]}
+        data = {"started": "2026-01-01T00:00:00", "secs": 1.0, "probe": {}, "powerful": [],
+                "dbs": [], "skipped_dbs": [], "results": {"server": server, "db": {}},
+                "full_query_text": False}
+        self.assertEqual([f[0]["id"] for f in findings_of(data)], ["S21"])
+        md, counts, _ = render_markdown(data)
+        self.assertEqual(counts, {"high": 0, "medium": 1, "low": 0})
+        self.assertIn("S21 [MEDIUM] Slow file I/O", md)
+        self.assertIn("27.3", md)
+
+
 if __name__ == "__main__":
     unittest.main()

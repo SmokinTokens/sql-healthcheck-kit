@@ -53,6 +53,7 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 | S08 | Non-system sysadmin members | medium |
 | S09 | SQL logins with password policy off | medium |
 | S13 | Top missing-index requests | medium |
+| S21 | Slow file I/O: average read or write latency >= 20 ms since startup (files with >= 1000 I/Os) | medium |
 | D01 | Large heaps | medium |
 | D02 | Duplicate indexes | medium |
 | S06 | Percent-based file growth | low |
@@ -65,6 +66,16 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 
 The report also warns when uptime is under 7 days (DMV stats reset at restart) and when
 AUTO_CLOSE is on (it empties DMV stats for that database).
+
+S21 reads `sys.dm_io_virtual_file_stats` joined to `sys.master_files` (`VIEW SERVER STATE`)
+and shows logical file names only, never physical paths. Its numbers are averages since each
+file came online, so they hide short spikes; Microsoft treats about 10-15 ms per transfer as
+the point where users start to notice. The lab container's fast disk produces no S21 rows,
+so this is what a finding looks like (illustrative values, not lab output):
+
+| database | file | type | reads | avg_read_ms | writes | avg_write_ms |
+|---|---|---|---|---|---|---|
+| Sales | Sales_log | LOG | 12 | 0.4 | 48210 | 27.3 |
 
 ## Quick start
 
@@ -126,7 +137,8 @@ placeholders). Rebuild both from `docs/sample-results.json` with `python3 docs/m
 ## What it does not check (yet)
 
 VLF counts, last good CHECKDB (needs `DBCC DBINFO`, not read-only), SQL Agent job failures
-(needs `msdb.dbo.sysjobhistory`), I/O latency (`sys.dm_io_virtual_file_stats`).
+(needs `msdb.dbo.sysjobhistory`), I/O latency over a short window (S21 shows averages
+since startup only; a two-snapshot delta needs `WAITFOR`, which the guard refuses).
 Pull requests welcome, as long as every new check stays a single read-only `SELECT`.
 
 ## How this compares to the First Responder Kit
@@ -146,7 +158,7 @@ What is different here:
 | | This kit | First Responder Kit |
 |---|---|---|
 | Install on the server | Nothing. Queries are sent from the client | Stored procedures, usually in `master` |
-| Checks | 20 single `SELECT` checks | Hundreds of checks across several procedures |
+| Checks | 21 single `SELECT` checks | Hundreds of checks across several procedures |
 | Login | Least-privilege reader; refuses to run as sysadmin or any write-capable login | Not restricted; some checks need high rights (e.g. trace-flag checks via `DBCC TRACESTATUS`) |
 | Output | One Markdown report, one self-contained HTML report, and JSON | Result sets in SSMS, optional output tables |
 | Query text | Literals redacted by default | Full query text and plans |

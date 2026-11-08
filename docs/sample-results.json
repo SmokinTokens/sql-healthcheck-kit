@@ -294,6 +294,9 @@
       "select @configcount = count(*) from sys.configurations where lower(name collate Latin1_General_CI_AS) like"
      ]
     ]
+   },
+   "S21": {
+    "rows": []
    }
   },
   "db": {

@@ -171,6 +171,28 @@ ORDER BY qs.total_worker_time DESC""",
         # Query text can hold data in literals. The runner redacts this column unless --full-query-text.
         "redact_col": 4,
     },
+    {
+        # Averages since each file came online (usually instance start). Microsoft puts the
+        # point where users start to feel I/O latency at about 10-15 ms per transfer; 20 ms
+        # plus a 1000-I/O floor keeps idle files and short blips out of the findings.
+        # Logical file names only: physical paths would leak the drive layout into reports.
+        "id": "S21", "title": "Slow file I/O (avg latency >= 20 ms since startup)", "area": "Performance",
+        "sql": """SELECT TOP (15) ISNULL(DB_NAME(vfs.database_id), CAST(vfs.database_id AS varchar(10))),
+ mf.name, mf.type_desc,
+ vfs.num_of_reads, CAST(1.0 * vfs.io_stall_read_ms / NULLIF(vfs.num_of_reads, 0) AS decimal(12,1)),
+ vfs.num_of_writes, CAST(1.0 * vfs.io_stall_write_ms / NULLIF(vfs.num_of_writes, 0) AS decimal(12,1))
+FROM sys.dm_io_virtual_file_stats(NULL, NULL) vfs
+JOIN sys.master_files mf ON mf.database_id = vfs.database_id AND mf.file_id = vfs.file_id
+WHERE (vfs.num_of_reads >= 1000 AND vfs.io_stall_read_ms >= 20 * vfs.num_of_reads)
+   OR (vfs.num_of_writes >= 1000 AND vfs.io_stall_write_ms >= 20 * vfs.num_of_writes)
+ORDER BY vfs.io_stall_read_ms + vfs.io_stall_write_ms DESC""",
+        "cols": ["database", "file", "type", "reads", "avg_read_ms", "writes", "avg_write_ms"],
+        "severity": "medium",
+        "fix": "These are averages since startup and hide spikes: take two snapshots of "
+               "sys.dm_io_virtual_file_stats a few minutes apart under normal load and compare. "
+               "If still slow, check the storage path (disk queue, SAN/VM host, antivirus scanning "
+               "data files) and the queries driving the I/O (S12 PAGEIOLATCH/WRITELOG waits, S14).",
+    },
 ]
 
 DB_CHECKS = [
