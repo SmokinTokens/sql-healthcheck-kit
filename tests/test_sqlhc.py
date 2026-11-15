@@ -112,6 +112,15 @@ class RedactTests(unittest.TestCase):
          "SELECT \"?\" FROM t WHERE d > '?' AND v = ?"),
         ("SELECT a FROM t WHERE b = 0X1F2E3D", "SELECT a FROM t WHERE b = 0x?"),
         ("SELECT a FROM t WHERE b = \"secret value\"", "SELECT a FROM t WHERE b = \"?\""),
+        # T-SQL block comments nest: text after the inner */ is still comment
+        ("SELECT 1 /* a /* b */ x=ann@x.com */ FROM t", "SELECT ? FROM t"),
+        ("SELECT /* 1 /* 2 /* 3 */ ann@x.com */ 4455667788 */ c FROM t", "SELECT c FROM t"),
+        ("SELECT c FROM t /* a /* b */ cut off ann@x.com 998877", "SELECT c FROM t"),
+        ("SELECT '/* not a comment' AS c, d FROM t WHERE e = 123456",
+         "SELECT '?' AS c, d FROM t WHERE e = ?"),
+        ("SELECT [a/*b] FROM t WHERE x = 'bob@y.org' -- /* tail", "SELECT [a/*b] FROM t WHERE x = '?'"),
+        ("SELECT 1 /* -- dash in comment ann@x.com */ FROM t", "SELECT ? FROM t"),
+        ("SELECT a */ FROM t WHERE b = 778899", "SELECT a */ FROM t WHERE b = ?"),
     ]
 
     def test_cases(self):
