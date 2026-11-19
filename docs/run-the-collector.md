@@ -72,9 +72,10 @@ It prints one line like this:
 - That line is printed, but `errors` is more than 0 (exit code 1): some checks failed.
   The report lists them under "Check errors". Read those lines in step 4 (they are raw
   server messages), then send the report; we will tell you if anything needs a rerun.
-- No such line, only an error message: no report was written. Common causes are a
-  wrong server name, a wrong password, or a certificate error (see `--trust-cert`).
-  Fix the cause and run the command again.
+- No such line, only an error message: the run did not finish. Do not send that
+  folder, even if some files are in it. Common causes are a wrong server name, a wrong
+  password, a certificate error (see `--trust-cert`) or a full disk. Fix the cause and
+  run again with a new folder name, for example `--out report-myserver-2`.
 - "refusing to run": the login has more rights than it needs (for example it is in
   sysadmin). No report was written. Use the `hc_reader` login from step 2. Do not use
   `--allow-powerful-login`.
@@ -123,7 +124,14 @@ Zip the folder:
 python3 -m zipfile -c healthcheck-myserver.zip report-myserver/
 ```
 
-(Or right-click the folder and choose "Compress".) Send the zip through the channel
+If you chose NOT to share `results.json`, zip only the two reports instead:
+
+```sh
+python3 -m zipfile -c healthcheck-myserver.zip report-myserver/report.md report-myserver/report.html
+```
+
+Check what is in the zip before you send it:
+`python3 -m zipfile -l healthcheck-myserver.zip`. Send the zip through the channel
 we agreed in writing, for example your company's file-share link. Do not post it in
 a public place.
 
