@@ -42,6 +42,13 @@ drops the backslash. Do the same in every command below. `-E` uses
 your Windows/Kerberos login. With a SQL sysadmin login instead, use `-U youradmin` and
 type its password when sqlcmd asks.
 
+Certificate error ("certificate chain was issued by an authority that is not
+trusted")? sqlcmd 18 encrypts the connection and checks the server's certificate by
+default. The right fix is a trusted certificate on the server. If your team accepts
+the server's self-signed certificate for this check, add `-C` to every `sqlcmd`
+command in this guide and `--trust-cert` in step 3. Both skip the check of the
+server's identity, so use them only on your own network.
+
 When it works, the only line it prints is `Changed database context to 'msdb'.`
 Any line that starts with `Msg` is an error: stop and send us that line (not the password).
 If a login named `hc_reader` already exists from an earlier check, run step 6 first.
@@ -63,7 +70,7 @@ export SQLCMDPASSWORD="$HC_PW"
 python3 -m sqlhc --server myserver --user hc_reader --out report-myserver
 ```
 
-Add `--trust-cert` only if your server uses a self-signed certificate.
+Add `--trust-cert` only if you chose `-C` in step 2 (self-signed certificate).
 
 It prints one line like this:
 `{"report": ".../report.md", ..., "counts": {"high": 3, "medium": 7, "low": 5}, "errors": 0, ...}`
