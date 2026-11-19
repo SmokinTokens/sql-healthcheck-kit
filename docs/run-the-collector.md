@@ -36,7 +36,9 @@ read -rs HC_PW && export HC_PW
 sqlcmd -S myserver -E -i sql/grant-reader.sql
 ```
 
-Replace `myserver` with your server (`host`, `host,port` or `host\instance`). `-E` uses
+Replace `myserver` with your server (`host`, `host,port` or `host\instance`). Put a
+named instance in single quotes, for example `-S 'sql01\prod'`: without them the shell
+drops the backslash. Do the same in every command below. `-E` uses
 your Windows/Kerberos login. With a SQL sysadmin login instead, use `-U youradmin` and
 type its password when sqlcmd asks.
 
@@ -67,10 +69,15 @@ It prints one line like this:
 `{"report": ".../report.md", ..., "counts": {"high": 3, "medium": 7, "low": 5}, "errors": 0, ...}`
 
 - `errors: 0` and exit code 0: done.
-- Exit code 1: some checks failed. The report lists them under "Check errors". Send the
-  report anyway; we will tell you if anything needs a rerun.
+- That line is printed, but `errors` is more than 0 (exit code 1): some checks failed.
+  The report lists them under "Check errors". Read those lines in step 4 (they are raw
+  server messages), then send the report; we will tell you if anything needs a rerun.
+- No such line, only an error message: no report was written. Common causes are a
+  wrong server name, a wrong password, or a certificate error (see `--trust-cert`).
+  Fix the cause and run the command again.
 - "refusing to run": the login has more rights than it needs (for example it is in
-  sysadmin). Use the `hc_reader` login from step 2. Do not use `--allow-powerful-login`.
+  sysadmin). No report was written. Use the `hc_reader` login from step 2. Do not use
+  `--allow-powerful-login`.
 
 The folder `report-myserver/` now holds three files:
 
@@ -85,16 +92,23 @@ The folder `report-myserver/` now holds three files:
 Open `report.html` in a browser and read it. It holds:
 
 - Server version, edition, CPU count, memory and uptime.
-- Names of your databases, tables, indexes and files, and their sizes.
+- Names of your databases, tables, indexes and logical files; file sizes; row counts
+  for some large tables (heaps).
 - Names of logins that are in sysadmin, have password policy off, or (for `sa`) are enabled.
 - Wait statistics.
 - The text of the top queries by CPU, first 110 characters each. Values in the queries
   (strings, numbers) are replaced with `?`.
+- Under "Check errors" (if any): the raw error message from the server, up to 200
+  characters each.
 
-It does NOT hold: table rows, passwords, file paths on disk, or the server name you typed.
+The checks do not collect table rows, passwords, file paths on disk, or the server
+name you typed. But an error message from the server can contain a name or a path:
+read the "Check errors" section before you send anything.
 
-`results.json` holds the same data as the report, plus the result of the login's
-permission check. It has no extra data from your tables.
+`results.json` holds everything in the report, plus the result of the login's
+permission check. The report tables show at most 15 rows each; `results.json` keeps
+ALL rows (for example every sysadmin login, not only the first 15). Open it in a text
+editor and read it too before you send it. It has no rows from your own tables.
 
 If a name is sensitive (for example a database named after a client), you can edit it.
 Replace it with a code, such as `DB1`, in all three files. Use the same code everywhere,
@@ -115,10 +129,15 @@ a public place.
 
 ## Step 6. Remove the reader login (sysadmin)
 
+First clear the reader password from your shell. Otherwise sqlcmd would try it for
+your admin login too:
+
 ```sh
-sqlcmd -S myserver -E -i sql/remove-reader.sql
 unset HC_PW SQLCMDPASSWORD
+sqlcmd -S myserver -E -i sql/remove-reader.sql
 ```
+
+With a SQL sysadmin login, use `-U youradmin` instead of `-E`, as in step 2.
 
 To confirm it is gone (this should print 0):
 
