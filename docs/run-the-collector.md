@@ -83,9 +83,12 @@ It prints one line like this:
   folder, even if some files are in it. Common causes are a wrong server name, a wrong
   password, a certificate error (see `--trust-cert`) or a full disk. Fix the cause and
   run again with a new folder name, for example `--out report-myserver-2`.
-- "refusing to run": the login has more rights than it needs (for example it is in
-  sysadmin). No report was written. Use the `hc_reader` login from step 2. Do not use
-  `--allow-powerful-login`.
+- "refusing to run": the collector found that the login has more rights than it needs
+  (for example it is in sysadmin), OR it could not verify the login's rights (a
+  permission probe failed or gave an answer it could not read). No report was written.
+  Read the message: it says which case it is. Use the `hc_reader` login from step 2,
+  check that step 2 finished without errors, and run again. Do not use
+  `--allow-powerful-login`. If it still refuses, send us the message (not the folder).
 
 The folder `report-myserver/` now holds three files:
 
@@ -109,13 +112,20 @@ Open `report.html` in a browser and read it. It holds:
 - Under "Check errors" (if any): the raw error message from the server, up to 200
   characters each.
 
-The checks do not collect table rows, passwords, file paths on disk, or the server
-name you typed. But an error message from the server can contain a name or a path:
-read the "Check errors" section before you send anything.
+The checks do not collect table rows, file paths on disk, or the server name you
+typed. They do not read password hashes. But two sections can still hold sensitive
+text, so read both before you send anything:
+
+- The top-queries section. It holds real query text. The masking of values is
+  best-effort, not a guarantee: a query can still show a password, key or name, for
+  example inside a comment. If you see one, remove that query from all three files.
+- The "Check errors" section. A raw server message can contain a name or a path.
 
 `results.json` holds everything in the report, plus the result of the login's
 permission check. The report tables show at most 15 rows each; `results.json` keeps
-ALL rows (for example every sysadmin login, not only the first 15). Open it in a text
+all rows each check returned, not only the first 15. (Each check still has its own
+filters and limits: for example, the sysadmin check leaves out built-in system
+logins.) Open it in a text
 editor and read it too before you send it. It has no rows from your own tables.
 
 If a name is sensitive (for example a database named after a client), you can edit it.
