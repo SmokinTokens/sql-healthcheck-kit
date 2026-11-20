@@ -93,7 +93,9 @@ so this is what a finding looks like (illustrative values, not lab output):
    ```
 
    The password must not contain a single quote (`'`): sqlcmd pastes `$(HC_PW)` into the
-   script as text.
+   script as text. The script only creates a new login: if a login or msdb user named
+   `hc_reader` already exists, it stops and changes nothing (an old `hc_reader` may hold
+   other rights). Run `sql/remove-reader.sql` first if that login is yours.
 
 3. Run the check:
 

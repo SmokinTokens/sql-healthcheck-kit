@@ -112,6 +112,15 @@ class RedactTests(unittest.TestCase):
          "SELECT \"?\" FROM t WHERE d > '?' AND v = ?"),
         ("SELECT a FROM t WHERE b = 0X1F2E3D", "SELECT a FROM t WHERE b = 0x?"),
         ("SELECT a FROM t WHERE b = \"secret value\"", "SELECT a FROM t WHERE b = \"?\""),
+        # T-SQL block comments nest: text after the inner */ is still comment
+        ("SELECT 1 /* a /* b */ x=ann@x.com */ FROM t", "SELECT ? FROM t"),
+        ("SELECT /* 1 /* 2 /* 3 */ ann@x.com */ 4455667788 */ c FROM t", "SELECT c FROM t"),
+        ("SELECT c FROM t /* a /* b */ cut off ann@x.com 998877", "SELECT c FROM t"),
+        ("SELECT '/* not a comment' AS c, d FROM t WHERE e = 123456",
+         "SELECT '?' AS c, d FROM t WHERE e = ?"),
+        ("SELECT [a/*b] FROM t WHERE x = 'bob@y.org' -- /* tail", "SELECT [a/*b] FROM t WHERE x = '?'"),
+        ("SELECT 1 /* -- dash in comment ann@x.com */ FROM t", "SELECT ? FROM t"),
+        ("SELECT a */ FROM t WHERE b = 778899", "SELECT a */ FROM t WHERE b = ?"),
     ]
 
     def test_cases(self):
@@ -336,6 +345,43 @@ class IoLatencyTests(unittest.TestCase):
         self.assertEqual(counts, {"high": 0, "medium": 1, "low": 0})
         self.assertIn("S21 [MEDIUM] Slow file I/O", md)
         self.assertIn("27.3", md)
+
+
+class GrantReaderScriptTests(unittest.TestCase):
+    """sql/grant-reader.sql must refuse a pre-existing hc_reader before it grants anything."""
+
+    def setUp(self):
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sql", "grant-reader.sql")
+        with open(path, encoding="utf-8") as f:
+            self.sql = f.read()
+        self.code = "\n".join(l.split("--", 1)[0] for l in self.sql.splitlines())
+
+    def test_single_batch(self):
+        # One batch: THROW then aborts the rest even without sqlcmd -b.
+        go = [l for l in self.code.splitlines() if l.strip().upper() == "GO"]
+        self.assertEqual(len(go), 1)
+        self.assertEqual(self.code.rstrip().splitlines()[-1].strip().upper(), "GO")
+        self.assertNotRegex(self.code, r"(?im)^\s*USE\s")
+
+    def test_refuses_existing_login_and_msdb_user_first(self):
+        first_write = min(self.code.index(k) for k in ("CREATE LOGIN", "GRANT ", "sp_executesql"))
+        login = re.search(r"IF SUSER_ID\('hc_reader'\) IS NOT NULL\s+THROW 5000\d", self.code)
+        user = re.search(r"IF EXISTS \(SELECT 1 FROM msdb\.sys\.database_principals WHERE name = N'hc_reader'\)\s+THROW",
+                         self.code)
+        self.assertIsNotNone(login)
+        self.assertIsNotNone(user)
+        assert login is not None and user is not None
+        self.assertLess(max(login.start(), user.start()), first_write)
+
+    def test_create_login_is_unconditional(self):
+        self.assertNotRegex(self.code, r"IS NULL\s+CREATE")
+        self.assertIn("CREATE LOGIN hc_reader", self.code)
+
+    def test_grants_unchanged(self):
+        for g in ("GRANT VIEW SERVER STATE TO hc_reader", "GRANT VIEW ANY DEFINITION TO hc_reader",
+                  "GRANT CONNECT ANY DATABASE TO hc_reader", "GRANT SELECT ON dbo.backupset TO hc_reader"):
+            self.assertIn(g, self.code)
+        self.assertEqual(self.code.count("GRANT "), 4)
 
 
 if __name__ == "__main__":
