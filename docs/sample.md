@@ -68,7 +68,7 @@
 |---|---|---|---|
 | dbo.Orders | IX\_Orders\_Cust | IX\_Orders\_Cust\_Dup | 2 |
 
-**Fix:** Drop the extra copy after checking index hints and constraints that use it. Each copy adds overhead to inserts, deletes and key updates.
+**Fix:** Potential duplicates: the keys match, but INCLUDE columns, filters and uniqueness are not compared. Before dropping one, compare the full definitions, keep any index that enforces uniqueness or a constraint, and check index hints that name it. Each extra index adds overhead to inserts, deletes and key updates.
 
 ### S05 [MEDIUM] Old compatibility level (Configuration, \(instance\))
 
@@ -107,7 +107,7 @@
 |---|---|---|---|
 | legacy\_app | off | off | enabled |
 
-**Fix:** Turn CHECK_POLICY ON and rotate the password. This also turns on expiry and lockout; for application logins set CHECK_EXPIRATION OFF explicitly.
+**Fix:** Turn CHECK_POLICY ON and rotate the password. This also turns on expiry and lockout, which can break an application login; set CHECK_EXPIRATION to match your password-rotation process.
 
 ### S13 [MEDIUM] Top missing-index requests (Performance, \(instance\))
 
@@ -124,7 +124,7 @@
 | dbo.Orders | IX\_Orders\_Cust | IX\_Orders\_Cust\_Date |
 | dbo.Orders | IX\_Orders\_Cust\_Dup | IX\_Orders\_Cust\_Date |
 
-**Fix:** The narrower index is usually redundant; confirm usage before dropping.
+**Fix:** Potential overlap: the wider index can often serve seeks that use the narrower one, but INCLUDE columns and filters are not compared. Compare the full definitions and usage before dropping.
 
 ### D04 [LOW] Untrusted foreign keys / check constraints (Schema, DemoShop)
 
@@ -161,7 +161,7 @@
 |---|
 | sa |
 
-**Fix:** Disable or rename sa once named admin logins exist.
+**Fix:** Disable sa once named admin logins exist. A disabled login can still be impersonated, so also review IMPERSONATE grants.
 
 ## Context (no action implied)
 

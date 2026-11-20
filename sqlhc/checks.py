@@ -104,13 +104,13 @@ WHERE m.name NOT LIKE 'NT SERVICE\\%' AND m.name NOT LIKE '##%'""",
  CASE is_expiration_checked WHEN 1 THEN 'on' ELSE 'off' END, CASE is_disabled WHEN 1 THEN 'disabled' ELSE 'enabled' END
 FROM sys.sql_logins WHERE is_policy_checked = 0 AND name NOT LIKE '##%'""",
         "cols": ["login", "policy", "expiry", "state"], "severity": "medium",
-        "fix": "Turn CHECK_POLICY ON and rotate the password. This also turns on expiry and lockout; for application logins set CHECK_EXPIRATION OFF explicitly.",
+        "fix": "Turn CHECK_POLICY ON and rotate the password. This also turns on expiry and lockout, which can break an application login; set CHECK_EXPIRATION to match your password-rotation process.",
     },
     {
         "id": "S10", "title": "'sa' login enabled", "area": "Security",
         "sql": """SELECT name FROM sys.sql_logins WHERE principal_id = 1 AND is_disabled = 0""",
         "cols": ["login"], "severity": "low",
-        "fix": "Disable or rename sa once named admin logins exist.",
+        "fix": "Disable sa once named admin logins exist. A disabled login can still be impersonated, so also review IMPERSONATE grants.",
     },
     {
         "id": "S11", "title": "tempdb data files vs CPUs", "area": "Configuration",
@@ -217,7 +217,7 @@ GROUP BY t.schema_id, t.name HAVING SUM(p.rows) >= 10000""",
 SELECT OBJECT_SCHEMA_NAME(a.object_id) + '.' + OBJECT_NAME(a.object_id), a.name, b.name, a.keycols
 FROM k a JOIN k b ON a.object_id = b.object_id AND a.keycols = b.keycols AND a.index_id < b.index_id""",
         "cols": ["table", "index_a", "index_b", "key_column_ids"], "severity": "medium",
-        "fix": "Drop the extra copy after checking index hints and constraints that use it. Each copy adds overhead to inserts, deletes and key updates.",
+        "fix": "Potential duplicates: the keys match, but INCLUDE columns, filters and uniqueness are not compared. Before dropping one, compare the full definitions, keep any index that enforces uniqueness or a constraint, and check index hints that name it. Each extra index adds overhead to inserts, deletes and key updates.",
     },
     {
         "id": "D03", "title": "Left-prefix overlapping indexes", "area": "Schema",
@@ -232,7 +232,7 @@ SELECT OBJECT_SCHEMA_NAME(a.object_id) + '.' + OBJECT_NAME(a.object_id), a.name,
 FROM k a JOIN k b ON a.object_id = b.object_id AND a.index_id <> b.index_id
  AND b.keycols LIKE a.keycols + ',%' AND a.is_unique = 0""",
         "cols": ["table", "narrower_index", "covered_by"], "severity": "low",
-        "fix": "The narrower index is usually redundant; confirm usage before dropping.",
+        "fix": "Potential overlap: the wider index can often serve seeks that use the narrower one, but INCLUDE columns and filters are not compared. Compare the full definitions and usage before dropping.",
     },
     {
         "id": "D04", "title": "Untrusted foreign keys / check constraints", "area": "Schema",
