@@ -43,7 +43,7 @@ WHERE d.recovery_model = 1 AND d.name NOT IN ('model') AND d.state = 0
 GROUP BY d.name
 HAVING MAX(b.backup_finish_date) IS NULL OR MAX(b.backup_finish_date) < DATEADD(hour, -24, GETDATE())""",
         "cols": ["database", "last_log_backup"], "severity": "high",
-        "fix": "Add log backups every 15-60 min, or switch to SIMPLE if point-in-time restore is not needed. The log grows without limit until then.",
+        "fix": "Add log backups (Microsoft suggests every 15-30 min as a start, more often to lose less data), or switch to SIMPLE if point-in-time restore is not needed. Until then the log keeps growing.",
     },
     {
         "id": "S04", "title": "Risky database options", "area": "Configuration",
@@ -56,7 +56,7 @@ FROM sys.databases
 WHERE database_id > 4 AND (is_auto_shrink_on = 1 OR is_auto_close_on = 1 OR page_verify_option <> 2
    OR (is_trustworthy_on = 1 AND name <> 'msdb'))""",
         "cols": ["database", "options"], "severity": "high",
-        "fix": "Set AUTO_SHRINK OFF, AUTO_CLOSE OFF, PAGE_VERIFY CHECKSUM, TRUSTWORTHY OFF (in a change window).",
+        "fix": "Set AUTO_SHRINK OFF, AUTO_CLOSE OFF and PAGE_VERIFY CHECKSUM. Set TRUSTWORTHY OFF unless an application feature needs it (for example cross-database Service Broker). Use a change window.",
     },
     {
         "id": "S05", "title": "Old compatibility level", "area": "Configuration",
@@ -86,7 +86,7 @@ WHERE (name = 'max server memory (MB)' AND CAST(value_in_use AS bigint) = 214748
        AND (SELECT cpu_count FROM sys.dm_os_sys_info) > 8)
    OR (name = 'backup compression default' AND CAST(value_in_use AS int) = 0)""",
         "cols": ["setting", "value"], "severity": "medium",
-        "fix": "Cap max server memory (leave OS headroom), raise cost threshold (~50), turn on optimize for ad hoc workloads and backup compression.",
+        "fix": "Cap max server memory (leave OS headroom). Raise cost threshold for parallelism in small steps and watch a full business cycle. Set MAXDOP per the Microsoft NUMA guidance (8 on one NUMA node with more than 8 logical CPUs). Consider optimize for ad hoc workloads, and backup compression if CPU allows.",
     },
     {
         "id": "S08", "title": "Sysadmin members (non-system)", "area": "Security",
@@ -104,7 +104,7 @@ WHERE m.name NOT LIKE 'NT SERVICE\\%' AND m.name NOT LIKE '##%'""",
  CASE is_expiration_checked WHEN 1 THEN 'on' ELSE 'off' END, CASE is_disabled WHEN 1 THEN 'disabled' ELSE 'enabled' END
 FROM sys.sql_logins WHERE is_policy_checked = 0 AND name NOT LIKE '##%'""",
         "cols": ["login", "policy", "expiry", "state"], "severity": "medium",
-        "fix": "Turn CHECK_POLICY ON and rotate the password.",
+        "fix": "Turn CHECK_POLICY ON and rotate the password. This also turns on expiry and lockout; for application logins set CHECK_EXPIRATION OFF explicitly.",
     },
     {
         "id": "S10", "title": "'sa' login enabled", "area": "Security",
@@ -119,7 +119,7 @@ FROM sys.master_files WHERE database_id = 2 AND type = 0
 HAVING COUNT(*) < CASE WHEN (SELECT cpu_count FROM sys.dm_os_sys_info) > 8 THEN 8
                        ELSE (SELECT cpu_count FROM sys.dm_os_sys_info) END""",
         "cols": ["tempdb_data_files", "cpus"], "severity": "low",
-        "fix": "Use one tempdb data file per core up to 8, all the same size.",
+        "fix": "Use one tempdb data file per logical CPU up to 8, all the same size. Add files in groups of 4 only if allocation contention remains.",
     },
     {
         "id": "S12", "title": "Top waits since startup", "area": "Performance",
@@ -217,7 +217,7 @@ GROUP BY t.schema_id, t.name HAVING SUM(p.rows) >= 10000""",
 SELECT OBJECT_SCHEMA_NAME(a.object_id) + '.' + OBJECT_NAME(a.object_id), a.name, b.name, a.keycols
 FROM k a JOIN k b ON a.object_id = b.object_id AND a.keycols = b.keycols AND a.index_id < b.index_id""",
         "cols": ["table", "index_a", "index_b", "key_column_ids"], "severity": "medium",
-        "fix": "Drop the extra copy after checking hints and constraints. Each copy slows every write.",
+        "fix": "Drop the extra copy after checking index hints and constraints that use it. Each copy adds overhead to inserts, deletes and key updates.",
     },
     {
         "id": "D03", "title": "Left-prefix overlapping indexes", "area": "Schema",
