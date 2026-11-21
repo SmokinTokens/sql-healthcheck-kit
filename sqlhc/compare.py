@@ -77,6 +77,9 @@ def _validate(data, label):
         raise CompareError(f"{label}: malformed DBLIST entry")
     if not isinstance(data.get("dbs"), list):
         raise CompareError(f"{label}: missing dbs list")
+    skipped = data.get("skipped_dbs", [])
+    if not isinstance(skipped, list) or not all(isinstance(d, str) for d in skipped):
+        raise CompareError(f"{label}: malformed skipped_dbs list")
     for db in data["dbs"]:
         if not isinstance(db, str) or not isinstance(res["db"].get(db), dict):
             raise CompareError(f"{label}: database entry missing or malformed")
@@ -252,6 +255,15 @@ def compare(before, after):
         items.append({"check": "DBLIST", "title": "User database list", "severity": "high",
                       "area": "Coverage", "scope": INSTANCE, "cols": [], "status": "unknown",
                       "before": None, "after": None, "reason": reason})
+    for side, data in (("before", before), ("after", after)):
+        # The collector skips databases with unusual or unparsable names: none of
+        # their checks ran. Show each one, so the gap is never read as '0 unknown'.
+        for name in data.get("skipped_dbs", []):
+            items.append({"check": "SKIPPED", "title": "Database skipped by the collector", "severity": "high",
+                          "area": "Coverage", "scope": name, "cols": [], "status": "unknown",
+                          "before": None, "after": None,
+                          "reason": f"{side}: database skipped by the collector (unusual or unparsable "
+                                    "name); its checks did not run"})
     for chk, is_server in _checks():
         if chk.get("severity", "info") == "info":
             continue
@@ -380,13 +392,15 @@ def main(argv=None):
             return 2
     made = []
     try:
-        with open(rp, "x") as f:
+        # UTF-8 always: server text (login, database names) may be any Unicode,
+        # whatever the locale of the machine that runs the compare.
+        with open(rp, "x", encoding="utf-8") as f:
             made.append(rp)
             f.write(render_markdown(diff))
-        with open(jp, "x") as f:
+        with open(jp, "x", encoding="utf-8") as f:
             made.append(jp)
             json.dump(diff, f, indent=1)
-    except OSError as e:
+    except Exception as e:
         # Created between the check and here, or a write failed (disk full...):
         # remove only what this run made, so no half pair is left behind.
         for path in made:
@@ -397,7 +411,7 @@ def main(argv=None):
         if isinstance(e, FileExistsError):
             print(f"refusing to overwrite {e.filename}", file=sys.stderr)
         else:
-            print(f"compare failed writing report: {e.strerror or e}", file=sys.stderr)
+            print(f"compare failed writing report: {getattr(e, 'strerror', None) or e}", file=sys.stderr)
         return 2
     print(json.dumps({"report": rp, "json": jp, "counts": diff["counts"],
                       "open_by_severity": diff["open_by_severity"]}))

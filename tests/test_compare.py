@@ -16,6 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
 from sqlhc.compare import CompareError, compare, load, main, render_markdown  # noqa: E402
+from sqlhc.runner import esc  # noqa: E402
 
 BEFORE = os.path.join(HERE, "fixtures", "lab-demoshop-before.json")
 
@@ -386,6 +387,32 @@ class LabCompareTests(unittest.TestCase):
         self.assertEqual(sorted(x["status"] for x in compare(before, after)["items"] if x["check"] == "S13"),
                          ["fixed", "unchanged"])
 
+    def test_skipped_db_is_unknown_coverage_item(self):
+        # The collector skips odd names and unparsable rows: they must show as gaps.
+        for side in ("before", "after", "both"):
+            before, after = lab_before(), lab_after()
+            if side in ("before", "both"):
+                before["skipped_dbs"] = ["odd[name]", "(unparsable name)"]
+            if side in ("after", "both"):
+                after["skipped_dbs"] = ["odd[name]"]
+            diff = compare(before, after)
+            sk = [x for x in diff["items"] if x["check"] == "SKIPPED"]
+            want = {"before": [("odd[name]", "before"), ("(unparsable name)", "before")],
+                    "after": [("odd[name]", "after")],
+                    "both": [("odd[name]", "before"), ("(unparsable name)", "before"), ("odd[name]", "after")]}
+            self.assertEqual(sorted((x["scope"], x["reason"].split(":")[0]) for x in sk), sorted(want[side]), side)
+            self.assertEqual({x["status"] for x in sk}, {"unknown"})
+            self.assertEqual(diff["counts"]["unknown"], len(want[side]), side)
+            # The three planted fixes are unaffected.
+            self.assertEqual(diff["counts"]["fixed"], 3)
+            md = render_markdown(diff)
+            self.assertIn(esc("odd[name]"), md)
+            self.assertIn("database skipped by the collector", md)
+        # No skipped list (older runs) or an empty one: no coverage item.
+        before = lab_before()
+        before.pop("skipped_dbs", None)
+        self.assertNotIn("SKIPPED", {x["check"] for x in compare(before, lab_after())["items"]})
+
     def test_markdown_escapes_server_text(self):
         after = lab_after()
         after["results"]["server"]["S08"]["rows"].append(["<img src=x>|evil", "SQL_LOGIN", "enabled"])
@@ -488,6 +515,56 @@ class LoadTests(unittest.TestCase):
         def failing_open(path, mode="r", *a, **k):
             if path == jp and mode == "x":
                 raise OSError(28, "No space left on device", jp)
+            return real_open(path, mode, *a, **k)
+        with mock.patch("builtins.open", failing_open):
+            self.assertEqual(main([BEFORE, after, "--out", out]), 2)
+        self.assertFalse(os.path.exists(rp))
+        self.assertFalse(os.path.exists(jp))
+        os.rmdir(out)
+
+    def test_rejects_malformed_skipped_dbs(self):
+        for v in ('"x"', "[1]", "{}", "null"):
+            with self.assertRaises(CompareError, msg=v):
+                load(self._write('{"dbs": [], "skipped_dbs": %s, "results": {"server": {}, "db": {}}}' % v), "x")
+
+    def test_cli_unicode_under_ascii_locale(self):
+        # LC_ALL=C with locale coercion and UTF-8 mode off: the default text encoding
+        # is ASCII. A Unicode login must still write a full UTF-8 report pair.
+        import subprocess
+        after = lab_after()
+        after["results"]["server"]["S08"]["rows"].append(["José_ü€", "SQL_LOGIN", "enabled"])
+        ap = self._write(json.dumps(after))
+        out = tempfile.mkdtemp()
+        env = dict(os.environ, LC_ALL="C", LANG="C", PYTHONCOERCECLOCALE="0", PYTHONUTF8="0",
+                   PYTHONIOENCODING="utf-8")
+        root = os.path.dirname(HERE)
+        enc = subprocess.run([sys.executable, "-X", "utf8=0", "-c", "import locale; print(locale.getpreferredencoding(False))"],
+                             env=env, capture_output=True, text=True).stdout.strip()
+        if "utf" in enc.lower().replace("-", ""):
+            self.skipTest(f"cannot get a non-UTF-8 locale here ({enc})")
+        r = subprocess.run([sys.executable, "-X", "utf8=0", "-m", "sqlhc.compare", BEFORE, ap, "--out", out],
+                           env=env, cwd=root, capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(os.path.join(out, "compare.md"), encoding="utf-8") as f:
+            self.assertIn(esc("José_ü€"), f.read())
+        with open(os.path.join(out, "compare.json"), encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["counts"]["new"], 1)
+        for n in ("compare.md", "compare.json"):
+            os.remove(os.path.join(out, n))
+        os.rmdir(out)
+
+    def test_cli_non_oserror_write_failure_removes_own_partial_file(self):
+        # Any write failure (here UnicodeEncodeError on compare.json) goes through cleanup.
+        import builtins
+        from unittest import mock
+        after = self._write(json.dumps(lab_after()))
+        out = tempfile.mkdtemp()
+        jp, rp = os.path.join(out, "compare.json"), os.path.join(out, "compare.md")
+        real_open = builtins.open
+
+        def failing_open(path, mode="r", *a, **k):
+            if path == jp and mode == "x":
+                raise UnicodeEncodeError("ascii", "\u20ac", 0, 1, "ordinal not in range(128)")
             return real_open(path, mode, *a, **k)
         with mock.patch("builtins.open", failing_open):
             self.assertEqual(main([BEFORE, after, "--out", out]), 2)
