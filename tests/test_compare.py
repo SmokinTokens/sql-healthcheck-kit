@@ -290,6 +290,55 @@ class LabCompareTests(unittest.TestCase):
         s21 = [x["status"] for x in compare(before, after)["items"] if x["check"] == "S21"]
         self.assertEqual(s21, ["changed"])
 
+    def test_unknown_item_with_after_row_counts_as_open(self):
+        # Full S21 list before, a new slow file after: unknown, but proven open after.
+        def s21(i):
+            return ["DemoShop", f"f{i}", "ROWS", "1000", "25", "1", "1"]
+        before, after = lab_before(), lab_after()
+        for d in (before, after):
+            for c in ("S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S10", "S11", "S13"):
+                if c in d["results"]["server"]:
+                    d["results"]["server"][c]["rows"] = []
+            for c in d["results"]["db"]["DemoShop"].values():
+                c["rows"] = []
+        before["results"]["server"]["S21"] = {"rows": [s21(i) for i in range(15)]}
+        after["results"]["server"]["S21"] = {"rows": [s21(99)]}
+        diff = compare(before, after)
+        s21_items = [x for x in diff["items"] if x["check"] == "S21"]
+        st = {(x["after"] or x["before"])[1]: x["status"] for x in s21_items}
+        self.assertEqual(st.pop("f99"), "unknown")
+        self.assertEqual(set(st.values()), {"fixed"})  # after list below cap: real fixes
+        self.assertEqual(diff["open_by_severity"]["medium"], 1)
+        self.assertIn("Still open after (finding rows seen in the after run): 0 high, 1 medium",
+                      render_markdown(diff))
+        # An unknown item seen only before (after side errored) is not counted open.
+        after["results"]["server"]["S21"] = {"error": "denied"}
+        self.assertEqual(compare(before, after)["open_by_severity"]["medium"], 0)
+
+    def test_sa_rename_is_changed_not_fixed_plus_new(self):
+        before, after = lab_before(), lab_after()
+        before["results"]["server"]["S10"]["rows"] = [["sa"]]
+        after["results"]["server"]["S10"]["rows"] = [["dba_root"]]
+        s10 = [x["status"] for x in compare(before, after)["items"] if x["check"] == "S10"]
+        self.assertEqual(s10, ["changed"])
+        after["results"]["server"]["S10"]["rows"] = []
+        s10 = [x["status"] for x in compare(before, after)["items"] if x["check"] == "S10"]
+        self.assertEqual(s10, ["fixed"])
+
+    def test_d02_pair_orientation_is_not_identity(self):
+        before, after = lab_before(), lab_after()
+        before["results"]["db"]["DemoShop"]["D02"]["rows"] = [["dbo.T", "IX_A", "IX_B", "2"]]
+        after["results"]["db"]["DemoShop"]["D02"]["rows"] = [["dbo.T", "IX_B", "IX_A", "2"]]
+        d02 = [x["status"] for x in compare(before, after)["items"] if x["check"] == "D02"]
+        self.assertEqual(d02, ["unchanged"])
+        # Reverse direction too.
+        d02 = [x["status"] for x in compare(after, before)["items"] if x["check"] == "D02"]
+        self.assertEqual(d02, ["unchanged"])
+        # A different partner index is still a different finding.
+        after["results"]["db"]["DemoShop"]["D02"]["rows"] = [["dbo.T", "IX_C", "IX_A", "2"]]
+        d02 = sorted(x["status"] for x in compare(before, after)["items"] if x["check"] == "D02")
+        self.assertEqual(d02, ["fixed", "new"])
+
     def test_capped_list_ranked_out_is_unknown(self):
         def s13(i):
             return ["DemoShop", f"[t{i}]", "[a]", "", "", str(100 + i)]
@@ -404,6 +453,26 @@ class LoadTests(unittest.TestCase):
         with open(jp) as f:
             self.assertEqual(f.read(), "other")
         os.remove(jp)
+        os.rmdir(out)
+
+    def test_cli_write_error_removes_own_partial_file(self):
+        # A non-FileExists write error on compare.json (e.g. disk full) must not
+        # leave the new compare.md behind.
+        import builtins
+        from unittest import mock
+        after = self._write(json.dumps(lab_after()))
+        out = tempfile.mkdtemp()
+        jp, rp = os.path.join(out, "compare.json"), os.path.join(out, "compare.md")
+        real_open = builtins.open
+
+        def failing_open(path, mode="r", *a, **k):
+            if path == jp and mode == "x":
+                raise OSError(28, "No space left on device", jp)
+            return real_open(path, mode, *a, **k)
+        with mock.patch("builtins.open", failing_open):
+            self.assertEqual(main([BEFORE, after, "--out", out]), 2)
+        self.assertFalse(os.path.exists(rp))
+        self.assertFalse(os.path.exists(jp))
         os.rmdir(out)
 
     def test_cli_bad_input_exit_2(self):
