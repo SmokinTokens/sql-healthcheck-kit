@@ -138,6 +138,19 @@ placeholders). Rebuild both from `docs/sample-results.json` with `python3 docs/m
 
 **Never run `lab/seed-demo.sql` on a real server.** It plants defects on purpose.
 
+## Compare two runs (re-check)
+
+After fixes, run the check again into a new folder, then compare the two JSON files:
+
+    python3 -m sqlhc.compare first/results.json recheck/results.json --out compare-out
+
+This writes `compare.md` and `compare.json`. Each finding row is one item, matched by
+check, scope and the check's key columns (login, table + index, ...). Items are **fixed**,
+**new**, **changed** (same item, other values moved), **unchanged** or **unknown**. A check
+that errored, or a database missing from one run, is unknown: an error is never shown as a fix.
+Checks that use counters since startup (S13, D05, S21) reset at restart, so a "fixed" there can
+mean only that the counters were cleared. The tool reads two files; it never connects to a server.
+
 ## What it does not check (yet)
 
 VLF counts, last good CHECKDB (needs `DBCC DBINFO`, not read-only), SQL Agent job failures
