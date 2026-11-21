@@ -37,8 +37,13 @@ KEY_COLS = {
     "S06": ["database", "file"], "S07": ["setting"], "S08": ["login"], "S09": ["login"],
     "S10": ["login"], "S11": [], "S13": ["database", "table", "equality", "inequality", "include"],
     "D01": ["table"], "D02": ["table", "index_a", "index_b"], "D03": ["table", "narrower_index", "covered_by"],
-    "D04": ["table", "constraint"], "D05": ["table", "index"],
+    "D04": ["table", "constraint"], "D05": ["table", "index"], "S21": ["database", "file"],
 }
+# Checks that return only the top N rows. An item missing from a full top-N list may
+# just have been ranked out, so it is unknown, not fixed.
+CAPPED = {"S13": 10, "S21": 15}
+# System databases are not in the 'dbs' list (database_id <= 4) but always exist.
+SYSTEM_DBS = {"master", "model", "msdb", "tempdb"}
 STATUSES = ("new", "fixed", "changed", "unchanged", "unknown")
 
 
@@ -74,8 +79,10 @@ def load(path, label):
         if len(keys) != len(set(keys)):
             raise CompareError(f"{label}: duplicate JSON key")
         return dict(pairs)
+    def no_constants(name):
+        raise CompareError(f"{label}: non-finite number {name}")
     try:
-        data = json.loads(raw.decode("utf-8"), object_pairs_hook=no_dupes)
+        data = json.loads(raw.decode("utf-8"), object_pairs_hook=no_dupes, parse_constant=no_constants)
     except (UnicodeDecodeError, json.JSONDecodeError):
         raise CompareError(f"{label}: not valid UTF-8 JSON") from None
     _validate(data, label)
@@ -99,25 +106,64 @@ def _result(data, chk, is_server, scope):
         # Partial rows next to an error are not a complete picture: never a basis for 'fixed'.
         return None, "check error: " + str(r["error"])[:200]
     rows = r.get("rows")
-    if not isinstance(rows, list) or not all(isinstance(x, list) for x in rows):
+    n = len(chk["cols"])
+    # Every row must have exactly the check's columns, all strings (as runner writes them).
+    # One bad row makes the whole check unknown: partial rows are not complete evidence.
+    if not isinstance(rows, list) or not all(
+            isinstance(x, list) and len(x) == n and all(isinstance(v, str) for v in x) for x in rows):
         return None, "rows malformed"
-    return [[str(v) for v in x] for x in rows], None
+    return [list(x) for x in rows], None
 
 
 def _key(chk, row):
-    cols = chk["cols"]
     names = KEY_COLS.get(chk["id"])
-    if names is None or len(row) != len(cols):
+    if names is None:
         return tuple(row)
-    return tuple(row[cols.index(n)] for n in names)
+    return tuple(row[chk["cols"].index(n)] for n in names)
 
 
 def _index(chk, rows):
-    """key -> list of rows (rare duplicates keep all, matched in order)."""
     out = {}
     for row in rows:
         out.setdefault(_key(chk, row), []).append(row)
     return out
+
+
+def _pair(bl, al):
+    """Pair rows that share one key. Identical rows pair first (order does not
+    matter), then the rest pair in sorted order. Returns [(before, after)]."""
+    bl, al, pairs = sorted(bl), sorted(al), []
+    rest_a = list(al)
+    rest_b = []
+    for b in bl:
+        if b in rest_a:
+            rest_a.remove(b)
+            pairs.append((b, b))
+        else:
+            rest_b.append(b)
+    for i in range(max(len(rest_b), len(rest_a))):
+        pairs.append((rest_b[i] if i < len(rest_b) else None, rest_a[i] if i < len(rest_a) else None))
+    return pairs
+
+
+def _db_of(chk, row):
+    if "database" in chk["cols"]:
+        return row[chk["cols"].index("database")]
+    return None
+
+
+def _why_not_fixed(chk, row, before, after, a_rows):
+    """Reason a vanished instance-level row cannot count as fixed, or None."""
+    db = _db_of(chk, row)
+    if db is not None and db not in SYSTEM_DBS:
+        if "error" in (after["results"]["server"].get("DBLIST") or {}):
+            return "after: database list could not be read"
+        if db in before["dbs"] and db not in after["dbs"]:
+            return f"after: database {db} not checked in this run"
+    cap = CAPPED.get(chk["id"])
+    if cap is not None and len(a_rows) >= cap:
+        return f"after: list is a full top {cap}; the item may only have been ranked out"
+    return None
 
 
 def compare(before, after):
@@ -149,19 +195,21 @@ def compare(before, after):
                 continue
             bi, ai = _index(chk, b_rows), _index(chk, a_rows)
             for key in list(dict.fromkeys(list(bi) + list(ai))):
-                bl, al = bi.get(key, []), ai.get(key, [])
-                for i in range(max(len(bl), len(al))):
-                    b = bl[i] if i < len(bl) else None
-                    a = al[i] if i < len(al) else None
+                for b, a in _pair(bi.get(key, []), ai.get(key, [])):
+                    extra = {}
                     if b is None:
                         st = "new"
                     elif a is None:
-                        st = "fixed"
+                        why = _why_not_fixed(chk, b, before, after, a_rows) if is_server else None
+                        if why:
+                            st, extra = "unknown", {"reason": why}
+                        else:
+                            st = "fixed"
                     elif a == b:
                         st = "unchanged"
                     else:
                         st = "changed"
-                    items.append(dict(base, status=st, before=b, after=a))
+                    items.append(dict(base, status=st, before=b, after=a, **extra))
     items.sort(key=lambda x: (STATUSES.index(x["status"]), SEV_ORDER[x["severity"]], x["check"], x["scope"]))
     counts = {s: sum(1 for x in items if x["status"] == s) for s in STATUSES}
     open_by_sev = {s: sum(1 for x in items if x["severity"] == s and x["status"] in ("new", "changed", "unchanged"))

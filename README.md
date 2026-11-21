@@ -147,7 +147,9 @@ After fixes, run the check again into a new folder, then compare the two JSON fi
 This writes `compare.md` and `compare.json`. Each finding row is one item, matched by
 check, scope and the check's key columns (login, table + index, ...). Items are **fixed**,
 **new**, **changed** (same item, other values moved), **unchanged** or **unknown**. A check
-that errored, or a database missing from one run, is unknown: an error is never shown as a fix.
+that errored, malformed rows, or a database missing from one run (or an unreadable database
+list) are unknown: an error is never shown as a fix. S13 and S21 return only a top 10 / top 15;
+an item that drops out of a full list is unknown, because it may only have been ranked out.
 Checks that use counters since startup (S13, D05, S21) reset at restart, so a "fixed" there can
 mean only that the counters were cleared. The tool reads two files; it never connects to a server.
 

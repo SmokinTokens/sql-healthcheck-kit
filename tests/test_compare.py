@@ -126,6 +126,74 @@ class LabCompareTests(unittest.TestCase):
         diff = compare(lab_before(), after)
         self.assertIn(("D01", "Sales"), by(diff, "new"))
 
+    def test_malformed_rows_make_check_unknown(self):
+        for bad in ([], ["dbo.OrderLines"], ["dbo.OrderLines", "400000", "x"], [{"a": 1}, "400000"],
+                    [None, "400000"], ["dbo.OrderLines", 400000]):
+            after = lab_after()
+            after["results"]["db"]["DemoShop"]["D01"]["rows"] = [bad]
+            diff = compare(lab_before(), after)
+            d01 = {x["status"] for x in diff["items"] if x["check"] == "D01"}
+            self.assertEqual(d01, {"unknown"}, bad)
+
+    def test_missing_database_server_rows_not_fixed(self):
+        after = lab_after()
+        after["dbs"] = []
+        after["results"]["db"] = {}
+        for cid in ("S03", "S04", "S05", "S06", "S13"):
+            rows = after["results"]["server"][cid]["rows"]
+            after["results"]["server"][cid]["rows"] = [r for r in rows if r[0] != "DemoShop"]
+        diff = compare(lab_before(), after)
+        demo = [x for x in diff["items"] if x["check"] in ("S03", "S04", "S05", "S06", "S13")
+                and x["before"] and x["before"][0] == "DemoShop"]
+        self.assertTrue(demo)
+        self.assertEqual({x["status"] for x in demo}, {"unknown"})
+        # System-database rows can still be judged: master's S06 row stays unchanged.
+        self.assertIn(("S06", "unchanged"), {(x["check"], x["status"]) for x in diff["items"]
+                                             if x["before"] and x["before"][0] == "master"})
+
+    def test_dblist_error_blocks_fixed_for_database_rows(self):
+        after = lab_after()
+        after["results"]["server"]["DBLIST"] = {"error": "permission denied"}
+        after["results"]["server"]["S03"]["rows"] = []
+        diff = compare(lab_before(), after)
+        s03 = [x for x in diff["items"] if x["check"] == "S03"]
+        self.assertEqual([x["status"] for x in s03], ["unknown"])
+
+    def test_s21_counter_move_is_changed(self):
+        row = ["DemoShop", "DemoShop", "ROWS", "1000", "25", "10", "30"]
+        before, after = lab_before(), lab_after()
+        before["results"]["server"]["S21"] = {"rows": [row]}
+        after["results"]["server"]["S21"] = {"rows": [row[:3] + ["2000"] + row[4:]]}
+        s21 = [x["status"] for x in compare(before, after)["items"] if x["check"] == "S21"]
+        self.assertEqual(s21, ["changed"])
+
+    def test_capped_list_ranked_out_is_unknown(self):
+        def s13(i):
+            return ["DemoShop", f"[t{i}]", "[a]", "", "", str(100 + i)]
+        before, after = lab_before(), lab_after()
+        before["results"]["server"]["S13"]["rows"] = [s13(i) for i in range(10)]
+        after["results"]["server"]["S13"]["rows"] = [s13(i) for i in range(1, 11)]
+        st = {x["before"][1]: x["status"] for x in compare(before, after)["items"]
+              if x["check"] == "S13" and x["before"]}
+        self.assertEqual(st["[t0]"], "unknown")
+        # Below the cap, absence is a real fix.
+        after["results"]["server"]["S13"]["rows"] = [s13(i) for i in range(1, 10)]
+        st = {x["before"][1]: x["status"] for x in compare(before, after)["items"]
+              if x["check"] == "S13" and x["before"]}
+        self.assertEqual(st["[t0]"], "fixed")
+
+    def test_duplicate_key_rows_ignore_order(self):
+        r1 = ["DemoShop", "[t]", "[a]", "", "", "100"]
+        r2 = ["DemoShop", "[t]", "[a]", "", "", "200"]
+        before, after = lab_before(), lab_after()
+        before["results"]["server"]["S13"]["rows"] = [r1, r2]
+        after["results"]["server"]["S13"]["rows"] = [r2, r1]
+        self.assertEqual([x["status"] for x in compare(before, after)["items"] if x["check"] == "S13"],
+                         ["unchanged", "unchanged"])
+        after["results"]["server"]["S13"]["rows"] = [r2]
+        self.assertEqual(sorted(x["status"] for x in compare(before, after)["items"] if x["check"] == "S13"),
+                         ["fixed", "unchanged"])
+
     def test_markdown_escapes_server_text(self):
         after = lab_after()
         after["results"]["server"]["S08"]["rows"].append(["<img src=x>|evil", "SQL_LOGIN", "enabled"])
@@ -149,6 +217,11 @@ class LoadTests(unittest.TestCase):
                      '{"results": {"server": {}, "db": {}}, "dbs": ["X"]}', "not json"):
             with self.assertRaises(CompareError, msg=text):
                 load(self._write(text), "x")
+
+    def test_rejects_non_finite_numbers(self):
+        for c in ("NaN", "Infinity", "-Infinity"):
+            with self.assertRaises(CompareError):
+                load(self._write('{"dbs": [], "secs": %s, "results": {"server": {}, "db": {}}}' % c), "x")
 
     def test_rejects_duplicate_keys(self):
         with self.assertRaises(CompareError):
