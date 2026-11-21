@@ -42,8 +42,14 @@ KEY_COLS = {
 # Checks that return only the top N rows. An item missing from a full top-N list may
 # just have been ranked out, so it is unknown, not fixed.
 CAPPED = {"S13": 10, "S21": 15}
-# System databases are not in the 'dbs' list (database_id <= 4) but always exist.
+# System databases are not in the 'dbs' list (database_id <= 4), so a run holds no
+# record of their state. master and tempdb cannot be set OFFLINE and the instance does
+# not run without them, so they are always covered. model and msdb have no state
+# evidence in a run: a vanished row for them is unknown, except in checks that list
+# files whatever the database state (S06 reads sys.master_files).
 SYSTEM_DBS = {"master", "model", "msdb", "tempdb"}
+ALWAYS_ONLINE = {"master", "tempdb"}
+STATE_FREE_CHECKS = {"S06"}
 STATUSES = ("new", "fixed", "changed", "unchanged", "unknown")
 
 
@@ -155,11 +161,20 @@ def _db_of(chk, row):
     return None
 
 
+def _dblist_error(data):
+    """The run's database-list error text, or None when the list was read."""
+    r = data["results"]["server"].get("DBLIST")
+    return r["error"] if r else None
+
+
 def _why_not_fixed(chk, row, before, after, a_rows):
     """Reason a vanished instance-level row cannot count as fixed, or None."""
     db = _db_of(chk, row)
-    if db is not None and db not in SYSTEM_DBS:
-        if "error" in (after["results"]["server"].get("DBLIST") or {}):
+    if db is not None and db in SYSTEM_DBS:
+        if db not in ALWAYS_ONLINE and chk["id"] not in STATE_FREE_CHECKS:
+            return f"after: no evidence that system database {db} was online"
+    elif db is not None:
+        if _dblist_error(after) is not None:
             return "after: database list could not be read"
         if db not in after["dbs"]:
             # Offline, no access or skipped name: the after run never looked at it.
@@ -170,8 +185,30 @@ def _why_not_fixed(chk, row, before, after, a_rows):
     return None
 
 
+def _why_not_new(chk, row, before, b_rows):
+    """Reason an instance-level row absent before cannot count as new, or None."""
+    db = _db_of(chk, row)
+    if db is not None and db not in SYSTEM_DBS and _dblist_error(before) is not None:
+        return "before: database list could not be read"
+    cap = CAPPED.get(chk["id"])
+    if cap is not None and len(b_rows) >= cap:
+        return f"before: list is a full top {cap}; the item may only have been ranked out"
+    return None
+
+
 def compare(before, after):
     items = []
+    b_dberr, a_dberr = _dblist_error(before), _dblist_error(after)
+    if b_dberr is not None or a_dberr is not None:
+        # The database inventory itself is a gap: show it, so that the per-database
+        # items below are never read as a complete picture.
+        reason = "; ".join(x for x in (b_dberr is not None and "before: database list could not be read: "
+                                       + str(b_dberr)[:200],
+                                       a_dberr is not None and "after: database list could not be read: "
+                                       + str(a_dberr)[:200]) if x)
+        items.append({"check": "DBLIST", "title": "User database list", "severity": "high",
+                      "area": "Coverage", "scope": INSTANCE, "cols": [], "status": "unknown",
+                      "before": None, "after": None, "reason": reason})
     for chk, is_server in _checks():
         if chk.get("severity", "info") == "info":
             continue
@@ -182,9 +219,16 @@ def compare(before, after):
             if b_why == a_why == NOT_IN_RUN:
                 continue  # both runs came from a kit version without this check
             if not is_server and scope not in before["dbs"] and a_why is None:
-                # A database first seen in the after run: its findings were not in the
-                # first report, so they are new. (The reverse case stays unknown, never fixed.)
-                b_rows, b_why = [], None
+                if b_dberr is not None:
+                    # The first run could not list databases: it may well have had this
+                    # one. Unreadable inventory never makes findings new.
+                    b_why = "database list could not be read"
+                else:
+                    # A database first seen in the after run: its findings were not in the
+                    # first report, so they are new. (The reverse case stays unknown, never fixed.)
+                    b_rows, b_why = [], None
+            elif not is_server and scope not in after["dbs"] and a_dberr is not None:
+                a_why = "database list could not be read"
             base = {"check": chk["id"], "title": chk["title"], "severity": chk["severity"],
                     "area": chk["area"], "scope": scope, "cols": chk["cols"]}
             if b_why or a_why:
@@ -202,7 +246,11 @@ def compare(before, after):
                 for b, a in _pair(bi.get(key, []), ai.get(key, [])):
                     extra = {}
                     if b is None:
-                        st = "new"
+                        why = _why_not_new(chk, a, before, b_rows) if is_server else None
+                        if why:
+                            st, extra = "unknown", {"reason": why}
+                        else:
+                            st = "new"
                     elif a is None:
                         why = _why_not_fixed(chk, b, before, after, a_rows) if is_server else None
                         if why:
@@ -284,6 +332,11 @@ def main(argv=None):
         return 2
     os.makedirs(a.out, exist_ok=True)
     rp, jp = os.path.join(a.out, "compare.md"), os.path.join(a.out, "compare.json")
+    for path in (rp, jp):
+        # Check both first, so a refusal never leaves a new report next to an old one.
+        if os.path.lexists(path):
+            print(f"refusing to overwrite {path}", file=sys.stderr)
+            return 2
     try:
         with open(rp, "x") as f:
             f.write(render_markdown(diff))

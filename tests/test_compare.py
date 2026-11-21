@@ -159,6 +159,86 @@ class LabCompareTests(unittest.TestCase):
         s03 = [x for x in diff["items"] if x["check"] == "S03"]
         self.assertEqual([x["status"] for x in s03], ["unknown"])
 
+    def test_dblist_error_before_never_makes_new(self):
+        before, after = lab_before(), lab_after()
+        before["dbs"], before["results"]["db"] = [], {}
+        before["results"]["server"]["DBLIST"] = {"error": "permission denied"}
+        for cid in ("S03", "S04", "S05", "S06", "S13"):
+            rows = before["results"]["server"][cid]["rows"]
+            before["results"]["server"][cid]["rows"] = [r for r in rows if r[0] != "DemoShop"]
+        diff = compare(before, after)
+        self.assertEqual(by(diff, "new"), [])
+        demo = [x for x in diff["items"] if x["scope"] == "DemoShop"]
+        self.assertTrue(demo)
+        self.assertEqual({x["status"] for x in demo}, {"unknown"})
+        gap = [x for x in diff["items"] if x["check"] == "DBLIST"]
+        self.assertEqual([(x["status"], x["scope"]) for x in gap], [("unknown", "(instance)")])
+        self.assertIn("before: database list could not be read: permission denied", gap[0]["reason"])
+        self.assertIn("DBLIST User database list", render_markdown(diff))
+
+    def test_dblist_error_after_emits_gap_item(self):
+        before, after = lab_before(), lab_after()
+        after["dbs"], after["results"]["db"] = [], {}
+        after["results"]["server"]["DBLIST"] = {"error": "denied"}
+        diff = compare(before, after)
+        self.assertEqual(by(diff, "fixed"), [])
+        gap = [x for x in diff["items"] if x["check"] == "DBLIST"]
+        self.assertEqual(len(gap), 1)
+        self.assertIn("after: database list could not be read: denied", gap[0]["reason"])
+        demo = [x for x in diff["items"] if x["scope"] == "DemoShop"]
+        self.assertTrue(demo)
+        self.assertEqual({x["status"] for x in demo}, {"unknown"})
+
+    def test_no_dblist_error_no_gap_item(self):
+        self.assertNotIn("DBLIST", {x["check"] for x in compare(lab_before(), lab_after())["items"]})
+
+    def test_model_msdb_vanished_row_is_unknown(self):
+        # S02 filters state = 0: model/msdb leaving the list may mean OFFLINE, not backed up.
+        before, after = lab_before(), lab_after()
+        rows = [["master", "SIMPLE", "NEVER"], ["model", "FULL", "NEVER"], ["msdb", "SIMPLE", "NEVER"]]
+        before["results"]["server"]["S02"]["rows"] = rows
+        after["results"]["server"]["S02"]["rows"] = []
+        st = {x["before"][0]: x["status"] for x in compare(before, after)["items"] if x["check"] == "S02"}
+        self.assertEqual(st, {"master": "fixed", "model": "unknown", "msdb": "unknown"})
+        r = [x["reason"] for x in compare(before, after)["items"]
+             if x["check"] == "S02" and x["before"][0] == "model"][0]
+        self.assertIn("no evidence that system database model was online", r)
+
+    def test_model_file_row_state_free_check_can_be_fixed(self):
+        before, after = lab_before(), lab_after()
+        row = ["model", "modeldev", "ROWS", "10%", "8"]
+        before["results"]["server"]["S06"]["rows"] = [row]
+        after["results"]["server"]["S06"]["rows"] = []
+        st = [x["status"] for x in compare(before, after)["items"] if x["check"] == "S06"]
+        self.assertEqual(st, ["fixed"])
+
+    def test_capped_before_list_full_after_row_is_unknown(self):
+        def s13(i):
+            return ["DemoShop", f"[t{i}]", "[a]", "", "", str(100 + i)]
+        before, after = lab_before(), lab_after()
+        before["results"]["server"]["S13"]["rows"] = [s13(i) for i in range(10)]
+        after["results"]["server"]["S13"]["rows"] = [s13(i) for i in range(1, 11)]
+        st = {x["after"][1]: (x["status"], x.get("reason", "")) for x in compare(before, after)["items"]
+              if x["check"] == "S13" and x["after"]}
+        self.assertEqual(st["[t10]"][0], "unknown")
+        self.assertIn("before: list is a full top 10", st["[t10]"][1])
+        # Below the cap in the first run, a newcomer is really new.
+        before["results"]["server"]["S13"]["rows"] = [s13(i) for i in range(9)]
+        st = {x["after"][1]: x["status"] for x in compare(before, after)["items"]
+              if x["check"] == "S13" and x["after"]}
+        self.assertEqual(st["[t10]"], "new")
+
+    def test_capped_s21_both_directions(self):
+        def s21(i):
+            return ["DemoShop", f"f{i}", "ROWS", "1000", "25", "1", "1"]
+        before, after = lab_before(), lab_after()
+        before["results"]["server"]["S21"] = {"rows": [s21(i) for i in range(15)]}
+        after["results"]["server"]["S21"] = {"rows": [s21(i) for i in range(1, 16)]}
+        items = [x for x in compare(before, after)["items"] if x["check"] == "S21"]
+        st = {(x["before"] or x["after"])[1]: x["status"] for x in items}
+        self.assertEqual((st["f0"], st["f15"]), ("unknown", "unknown"))
+        self.assertEqual(sum(1 for x in items if x["status"] == "unchanged"), 14)
+
     def test_database_in_neither_inventory_not_fixed(self):
         # e.g. DemoShop offline or no access in both runs: S03 saw it before, not after.
         before, after = lab_before(), lab_after()
@@ -255,6 +335,19 @@ class LoadTests(unittest.TestCase):
         self.assertEqual(main([BEFORE, after, "--out", out]), 2)
         for n in ("compare.md", "compare.json"):
             os.remove(os.path.join(out, n))
+        os.rmdir(out)
+
+    def test_cli_refusal_leaves_no_partial_pair(self):
+        after = self._write(json.dumps(lab_after()))
+        out = tempfile.mkdtemp()
+        jp, rp = os.path.join(out, "compare.json"), os.path.join(out, "compare.md")
+        with open(jp, "w") as f:
+            f.write("old")
+        self.assertEqual(main([BEFORE, after, "--out", out]), 2)
+        self.assertFalse(os.path.exists(rp))
+        with open(jp) as f:
+            self.assertEqual(f.read(), "old")
+        os.remove(jp)
         os.rmdir(out)
 
     def test_cli_bad_input_exit_2(self):
