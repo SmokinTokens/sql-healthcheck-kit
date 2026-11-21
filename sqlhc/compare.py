@@ -220,6 +220,25 @@ def _why_not_new(chk, row, before, after, b_rows):
     return None
 
 
+def open_after(after):
+    """Finding rows per severity in the readable checks of the AFTER run alone.
+
+    This does not depend on the before run or on any comparison status: a finding
+    the after run shows is open, even when the before side was unreadable (its item
+    is 'unknown'). Checks that errored or were not run in AFTER count nothing.
+    """
+    out = {"high": 0, "medium": 0, "low": 0}
+    for chk, is_server in _checks():
+        sev = chk.get("severity", "info")
+        if sev not in out:
+            continue
+        for scope in [INSTANCE] if is_server else list(dict.fromkeys(after["dbs"])):
+            rows, why = _result(after, chk, is_server, scope)
+            if why is None and rows is not None:
+                out[sev] += len(rows)
+    return out
+
+
 def compare(before, after):
     items = []
     b_dberr, a_dberr = _dblist_error(before), _dblist_error(after)
@@ -285,10 +304,7 @@ def compare(before, after):
                     items.append(dict(base, status=st, before=b, after=a, **extra))
     items.sort(key=lambda x: (STATUSES.index(x["status"]), SEV_ORDER[x["severity"]], x["check"], x["scope"]))
     counts = {s: sum(1 for x in items if x["status"] == s) for s in STATUSES}
-    # Open = the finding row is in the readable after run, whatever the comparison
-    # status (an 'unknown' item can still be proven open by its after row).
-    open_by_sev = {s: sum(1 for x in items if x["severity"] == s and x["after"] is not None)
-                   for s in ("high", "medium", "low")}
+    open_by_sev = open_after(after)
     return {"before": {"started": before.get("started"), "dbs": before["dbs"]},
             "after": {"started": after.get("started"), "dbs": after["dbs"]},
             "counts": counts, "open_by_severity": open_by_sev, "items": items}

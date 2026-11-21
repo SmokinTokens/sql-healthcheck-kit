@@ -315,6 +315,26 @@ class LabCompareTests(unittest.TestCase):
         after["results"]["server"]["S21"] = {"error": "denied"}
         self.assertEqual(compare(before, after)["open_by_severity"]["medium"], 0)
 
+    def test_open_after_counts_rows_when_before_unreadable(self):
+        # Before run unreadable (check error, db list error): every item is unknown,
+        # but 'still open after' comes from the readable after run alone.
+        before, after = lab_before(), lab_after()
+        expect = compare(lab_after(), lab_after())["open_by_severity"]
+        self.assertGreater(sum(expect.values()), 0)
+        for c in before["results"]["server"]:
+            before["results"]["server"][c] = {"error": "denied"}
+        for db in before["dbs"]:
+            for c in before["results"]["db"][db]:
+                before["results"]["db"][db][c] = {"error": "denied"}
+        diff = compare(before, after)
+        self.assertEqual(diff["counts"]["fixed"] + diff["counts"]["new"], 0)
+        self.assertEqual(diff["open_by_severity"], expect)
+        md = render_markdown(diff)
+        self.assertIn(f"Still open after (finding rows seen in the after run): {expect['high']} high, "
+                      f"{expect['medium']} medium, {expect['low']} low.", md)
+        # Same count for any before run: it is a property of the after run only.
+        self.assertEqual(compare(lab_before(), after)["open_by_severity"], expect)
+
     def test_sa_rename_is_changed_not_fixed_plus_new(self):
         before, after = lab_before(), lab_after()
         before["results"]["server"]["S10"]["rows"] = [["sa"]]
