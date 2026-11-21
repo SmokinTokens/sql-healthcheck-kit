@@ -185,11 +185,20 @@ def _why_not_fixed(chk, row, before, after, a_rows):
     return None
 
 
-def _why_not_new(chk, row, before, b_rows):
+def _why_not_new(chk, row, before, after, b_rows):
     """Reason an instance-level row absent before cannot count as new, or None."""
     db = _db_of(chk, row)
-    if db is not None and db not in SYSTEM_DBS and _dblist_error(before) is not None:
-        return "before: database list could not be read"
+    if db is not None and db in SYSTEM_DBS:
+        # Same rule as for 'fixed': model/msdb may have been OFFLINE in the first run.
+        if db not in ALWAYS_ONLINE and chk["id"] not in STATE_FREE_CHECKS:
+            return f"before: no evidence that system database {db} was online"
+    elif db is not None:
+        if _dblist_error(before) is not None:
+            return "before: database list could not be read"
+        if db not in before["dbs"] and db not in after["dbs"]:
+            # Never in either inventory (offline, no access, skipped name). A database
+            # first listed in the after run is really new, so its rows are new.
+            return f"before: database {db} not checked in this run"
     cap = CAPPED.get(chk["id"])
     if cap is not None and len(b_rows) >= cap:
         return f"before: list is a full top {cap}; the item may only have been ranked out"
@@ -246,7 +255,7 @@ def compare(before, after):
                 for b, a in _pair(bi.get(key, []), ai.get(key, [])):
                     extra = {}
                     if b is None:
-                        why = _why_not_new(chk, a, before, b_rows) if is_server else None
+                        why = _why_not_new(chk, a, before, after, b_rows) if is_server else None
                         if why:
                             st, extra = "unknown", {"reason": why}
                         else:
@@ -337,12 +346,18 @@ def main(argv=None):
         if os.path.lexists(path):
             print(f"refusing to overwrite {path}", file=sys.stderr)
             return 2
+    made = []
     try:
         with open(rp, "x") as f:
+            made.append(rp)
             f.write(render_markdown(diff))
         with open(jp, "x") as f:
+            made.append(jp)
             json.dump(diff, f, indent=1)
     except FileExistsError as e:
+        # Created between the check and here: remove only what this run made.
+        for path in made:
+            os.remove(path)
         print(f"refusing to overwrite {e.filename}", file=sys.stderr)
         return 2
     print(json.dumps({"report": rp, "json": jp, "counts": diff["counts"],

@@ -204,6 +204,32 @@ class LabCompareTests(unittest.TestCase):
              if x["check"] == "S02" and x["before"][0] == "model"][0]
         self.assertIn("no evidence that system database model was online", r)
 
+    def test_model_msdb_appearing_row_is_unknown_not_new(self):
+        # Reverse of the above: model/msdb absent before may only mean OFFLINE then.
+        before, after = lab_before(), lab_after()
+        before["results"]["server"]["S02"]["rows"] = []
+        after["results"]["server"]["S02"]["rows"] = [
+            ["master", "SIMPLE", "NEVER"], ["model", "FULL", "NEVER"], ["msdb", "SIMPLE", "NEVER"]]
+        items = [x for x in compare(before, after)["items"] if x["check"] == "S02"]
+        st = {x["after"][0]: x["status"] for x in items}
+        self.assertEqual(st, {"master": "new", "model": "unknown", "msdb": "unknown"})
+        self.assertIn("before: no evidence that system database msdb was online",
+                      [x["reason"] for x in items if x["after"][0] == "msdb"][0])
+        # A state-free check (S06 file list) can still report model as new.
+        before["results"]["server"]["S06"]["rows"] = []
+        after["results"]["server"]["S06"]["rows"] = [["model", "modeldev", "ROWS", "10%", "8"]]
+        s06 = [x["status"] for x in compare(before, after)["items"] if x["check"] == "S06"]
+        self.assertEqual(s06, ["new"])
+
+    def test_user_db_in_neither_inventory_not_new(self):
+        before, after = lab_before(), lab_after()
+        for d in (before, after):
+            d["dbs"], d["results"]["db"] = [], {}
+        before["results"]["server"]["S03"]["rows"] = []
+        s03 = [x for x in compare(before, after)["items"] if x["check"] == "S03"]
+        self.assertTrue(s03)
+        self.assertEqual({x["status"] for x in s03}, {"unknown"})
+
     def test_model_file_row_state_free_check_can_be_fixed(self):
         before, after = lab_before(), lab_after()
         row = ["model", "modeldev", "ROWS", "10%", "8"]
@@ -347,6 +373,28 @@ class LoadTests(unittest.TestCase):
         self.assertFalse(os.path.exists(rp))
         with open(jp) as f:
             self.assertEqual(f.read(), "old")
+        os.remove(jp)
+        os.rmdir(out)
+
+    def test_cli_race_removes_own_partial_file(self):
+        # compare.json appears after the pre-check: the new compare.md must not stay.
+        import builtins
+        from unittest import mock
+        after = self._write(json.dumps(lab_after()))
+        out = tempfile.mkdtemp()
+        jp, rp = os.path.join(out, "compare.json"), os.path.join(out, "compare.md")
+        real_open = builtins.open
+
+        def racing_open(path, mode="r", *a, **k):
+            if path == jp and mode == "x":
+                with real_open(jp, "w") as f:
+                    f.write("other")
+            return real_open(path, mode, *a, **k)
+        with mock.patch("builtins.open", racing_open):
+            self.assertEqual(main([BEFORE, after, "--out", out]), 2)
+        self.assertFalse(os.path.exists(rp))
+        with open(jp) as f:
+            self.assertEqual(f.read(), "other")
         os.remove(jp)
         os.rmdir(out)
 
