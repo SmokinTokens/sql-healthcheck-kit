@@ -61,6 +61,9 @@ def _validate(data, label):
     res = data.get("results")
     if not isinstance(res, dict) or not isinstance(res.get("server"), dict) or not isinstance(res.get("db"), dict):
         raise CompareError(f"{label}: missing results.server / results.db")
+    dblist = res["server"].get("DBLIST")
+    if "DBLIST" in res["server"] and not (isinstance(dblist, dict) and isinstance(dblist.get("error"), str)):
+        raise CompareError(f"{label}: malformed DBLIST entry")
     if not isinstance(data.get("dbs"), list):
         raise CompareError(f"{label}: missing dbs list")
     for db in data["dbs"]:
@@ -158,7 +161,8 @@ def _why_not_fixed(chk, row, before, after, a_rows):
     if db is not None and db not in SYSTEM_DBS:
         if "error" in (after["results"]["server"].get("DBLIST") or {}):
             return "after: database list could not be read"
-        if db in before["dbs"] and db not in after["dbs"]:
+        if db not in after["dbs"]:
+            # Offline, no access or skipped name: the after run never looked at it.
             return f"after: database {db} not checked in this run"
     cap = CAPPED.get(chk["id"])
     if cap is not None and len(a_rows) >= cap:

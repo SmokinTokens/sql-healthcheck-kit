@@ -159,6 +159,15 @@ class LabCompareTests(unittest.TestCase):
         s03 = [x for x in diff["items"] if x["check"] == "S03"]
         self.assertEqual([x["status"] for x in s03], ["unknown"])
 
+    def test_database_in_neither_inventory_not_fixed(self):
+        # e.g. DemoShop offline or no access in both runs: S03 saw it before, not after.
+        before, after = lab_before(), lab_after()
+        for d in (before, after):
+            d["dbs"], d["results"]["db"] = [], {}
+        after["results"]["server"]["S03"]["rows"] = []
+        s03 = [x["status"] for x in compare(before, after)["items"] if x["check"] == "S03"]
+        self.assertEqual(s03, ["unknown"])
+
     def test_s21_counter_move_is_changed(self):
         row = ["DemoShop", "DemoShop", "ROWS", "1000", "25", "10", "30"]
         before, after = lab_before(), lab_after()
@@ -222,6 +231,14 @@ class LoadTests(unittest.TestCase):
         for c in ("NaN", "Infinity", "-Infinity"):
             with self.assertRaises(CompareError):
                 load(self._write('{"dbs": [], "secs": %s, "results": {"server": {}, "db": {}}}' % c), "x")
+
+    def test_rejects_malformed_dblist(self):
+        for v in ("1", "null", "[]", '"x"', "{}", '{"error": 5}', '{"rows": []}'):
+            text = '{"dbs": [], "results": {"server": {"DBLIST": %s}, "db": {}}}' % v
+            with self.assertRaises(CompareError, msg=v):
+                load(self._write(text), "x")
+        ok = '{"dbs": [], "results": {"server": {"DBLIST": {"error": "denied"}}, "db": {}}}'
+        load(self._write(ok), "x")
 
     def test_rejects_duplicate_keys(self):
         with self.assertRaises(CompareError):
