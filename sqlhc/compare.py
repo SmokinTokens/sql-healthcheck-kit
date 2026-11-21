@@ -195,9 +195,9 @@ def _why_not_new(chk, row, before, after, b_rows):
     elif db is not None:
         if _dblist_error(before) is not None:
             return "before: database list could not be read"
-        if db not in before["dbs"] and db not in after["dbs"]:
-            # Never in either inventory (offline, no access, skipped name). A database
-            # first listed in the after run is really new, so its rows are new.
+        if db not in before["dbs"]:
+            # Offline, no access or skipped name in the first run: it may have had
+            # this finding already. Absence from the list is not proof of creation.
             return f"before: database {db} not checked in this run"
     cap = CAPPED.get(chk["id"])
     if cap is not None and len(b_rows) >= cap:
@@ -227,15 +227,12 @@ def compare(before, after):
             a_rows, a_why = _result(after, chk, is_server, scope)
             if b_why == a_why == NOT_IN_RUN:
                 continue  # both runs came from a kit version without this check
-            if not is_server and scope not in before["dbs"] and a_why is None:
-                if b_dberr is not None:
-                    # The first run could not list databases: it may well have had this
-                    # one. Unreadable inventory never makes findings new.
-                    b_why = "database list could not be read"
-                else:
-                    # A database first seen in the after run: its findings were not in the
-                    # first report, so they are new. (The reverse case stays unknown, never fixed.)
-                    b_rows, b_why = [], None
+            # A database missing from one run's list is unknown on that side (set by
+            # _result). The list only holds ONLINE databases the login can open, so
+            # absence before does not prove the database was created since: its
+            # findings are never 'new'; absence after never makes them 'fixed'.
+            if not is_server and scope not in before["dbs"] and b_dberr is not None:
+                b_why = "database list could not be read"
             elif not is_server and scope not in after["dbs"] and a_dberr is not None:
                 a_why = "database list could not be read"
             base = {"check": chk["id"], "title": chk["title"], "severity": chk["severity"],
@@ -298,7 +295,8 @@ def render_markdown(diff, title="SQL Server Health Check - Re-check comparison")
     if gone:
         L.append("- Not checked in the after run: " + ", ".join(esc(d) for d in gone) + " (their items are unknown, not fixed).")
     if added:
-        L.append("- Only in the after run: " + ", ".join(esc(d) for d in added) + ".")
+        L.append("- Not checked in the before run: " + ", ".join(esc(d) for d in added)
+                 + " (offline, no access or created since; their items are unknown, not new).")
     L.append("- Matching: by check, scope and the check's key columns. Each finding row is one item.")
     L += ["", "## Summary", "",
           f"**{c['fixed']} fixed, {c['new']} new, {c['changed']} changed, {c['unchanged']} unchanged, "

@@ -119,12 +119,20 @@ class LabCompareTests(unittest.TestCase):
         self.assertEqual({x["status"] for x in db_items}, {"unknown"})
         self.assertIn("Not checked in the after run: DemoShop", render_markdown(diff))
 
-    def test_new_database_findings_are_new(self):
+    def test_database_missing_from_before_is_unknown_not_new(self):
+        # Sales may have been OFFLINE or not accessible in the first run: not proof of new.
         after = lab_after()
         after["dbs"].append("Sales")
         after["results"]["db"]["Sales"] = copy.deepcopy(after["results"]["db"]["DemoShop"])
+        after["results"]["server"]["S03"]["rows"].append(["Sales", "NEVER"])
         diff = compare(lab_before(), after)
-        self.assertIn(("D01", "Sales"), by(diff, "new"))
+        self.assertEqual(by(diff, "new"), [])
+        sales = [x for x in diff["items"] if x["scope"] == "Sales"
+                 or (x["after"] and x["after"][0] == "Sales")]
+        self.assertTrue(sales)
+        self.assertEqual({x["status"] for x in sales}, {"unknown"})
+        self.assertIn(("D01", "Sales"), by(diff, "unknown"))
+        self.assertIn("Not checked in the before run: Sales", render_markdown(diff))
 
     def test_malformed_rows_make_check_unknown(self):
         for bad in ([], ["dbo.OrderLines"], ["dbo.OrderLines", "400000", "x"], [{"a": 1}, "400000"],
