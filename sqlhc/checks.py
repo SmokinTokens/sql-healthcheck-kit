@@ -43,7 +43,7 @@ WHERE d.recovery_model = 1 AND d.name NOT IN ('model') AND d.state = 0
 GROUP BY d.name
 HAVING MAX(b.backup_finish_date) IS NULL OR MAX(b.backup_finish_date) < DATEADD(hour, -24, GETDATE())""",
         "cols": ["database", "last_log_backup"], "severity": "high",
-        "fix": "Add log backups every 15-60 min, or switch to SIMPLE if point-in-time restore is not needed. The log grows without limit until then.",
+        "fix": "Add log backups (Microsoft suggests every 15-30 min as a start, more often to lose less data), or switch to SIMPLE if point-in-time restore is not needed. Until then the log keeps growing.",
     },
     {
         "id": "S04", "title": "Risky database options", "area": "Configuration",
@@ -56,7 +56,7 @@ FROM sys.databases
 WHERE database_id > 4 AND (is_auto_shrink_on = 1 OR is_auto_close_on = 1 OR page_verify_option <> 2
    OR (is_trustworthy_on = 1 AND name <> 'msdb'))""",
         "cols": ["database", "options"], "severity": "high",
-        "fix": "Set AUTO_SHRINK OFF, AUTO_CLOSE OFF, PAGE_VERIFY CHECKSUM, TRUSTWORTHY OFF (in a change window).",
+        "fix": "Set AUTO_SHRINK OFF, AUTO_CLOSE OFF and PAGE_VERIFY CHECKSUM. Set TRUSTWORTHY OFF unless an application feature needs it (for example cross-database Service Broker). Use a change window.",
     },
     {
         "id": "S05", "title": "Old compatibility level", "area": "Configuration",
@@ -86,7 +86,7 @@ WHERE (name = 'max server memory (MB)' AND CAST(value_in_use AS bigint) = 214748
        AND (SELECT cpu_count FROM sys.dm_os_sys_info) > 8)
    OR (name = 'backup compression default' AND CAST(value_in_use AS int) = 0)""",
         "cols": ["setting", "value"], "severity": "medium",
-        "fix": "Cap max server memory (leave OS headroom), raise cost threshold (~50), turn on optimize for ad hoc workloads and backup compression.",
+        "fix": "Cap max server memory (leave OS headroom). Raise cost threshold for parallelism in small steps and watch a full business cycle. Set MAXDOP per the Microsoft NUMA guidance (8 on one NUMA node with more than 8 logical CPUs). Consider optimize for ad hoc workloads, and backup compression if CPU allows.",
     },
     {
         "id": "S08", "title": "Sysadmin members (non-system)", "area": "Security",
@@ -104,13 +104,13 @@ WHERE m.name NOT LIKE 'NT SERVICE\\%' AND m.name NOT LIKE '##%'""",
  CASE is_expiration_checked WHEN 1 THEN 'on' ELSE 'off' END, CASE is_disabled WHEN 1 THEN 'disabled' ELSE 'enabled' END
 FROM sys.sql_logins WHERE is_policy_checked = 0 AND name NOT LIKE '##%'""",
         "cols": ["login", "policy", "expiry", "state"], "severity": "medium",
-        "fix": "Turn CHECK_POLICY ON and rotate the password.",
+        "fix": "Turn CHECK_POLICY ON and rotate the password. This also turns on expiry and lockout, which can break an application login; set CHECK_EXPIRATION to match your password-rotation process.",
     },
     {
         "id": "S10", "title": "'sa' login enabled", "area": "Security",
         "sql": """SELECT name FROM sys.sql_logins WHERE principal_id = 1 AND is_disabled = 0""",
         "cols": ["login"], "severity": "low",
-        "fix": "Disable or rename sa once named admin logins exist.",
+        "fix": "Disable sa once named admin logins exist. A disabled login can still be impersonated, so also review IMPERSONATE grants.",
     },
     {
         "id": "S11", "title": "tempdb data files vs CPUs", "area": "Configuration",
@@ -119,7 +119,7 @@ FROM sys.master_files WHERE database_id = 2 AND type = 0
 HAVING COUNT(*) < CASE WHEN (SELECT cpu_count FROM sys.dm_os_sys_info) > 8 THEN 8
                        ELSE (SELECT cpu_count FROM sys.dm_os_sys_info) END""",
         "cols": ["tempdb_data_files", "cpus"], "severity": "low",
-        "fix": "Use one tempdb data file per core up to 8, all the same size.",
+        "fix": "Use one tempdb data file per logical CPU up to 8, all the same size. Add files in groups of 4 only if allocation contention remains.",
     },
     {
         "id": "S12", "title": "Top waits since startup", "area": "Performance",
@@ -171,6 +171,28 @@ ORDER BY qs.total_worker_time DESC""",
         # Query text can hold data in literals. The runner redacts this column unless --full-query-text.
         "redact_col": 4,
     },
+    {
+        # Averages since each file came online (usually instance start). Microsoft puts the
+        # point where users start to feel I/O latency at about 10-15 ms per transfer; 20 ms
+        # plus a 1000-I/O floor keeps idle files and short blips out of the findings.
+        # Logical file names only: physical paths would leak the drive layout into reports.
+        "id": "S21", "title": "Slow file I/O (avg latency >= 20 ms since startup)", "area": "Performance",
+        "sql": """SELECT TOP (15) ISNULL(DB_NAME(vfs.database_id), CAST(vfs.database_id AS varchar(10))),
+ mf.name, mf.type_desc,
+ vfs.num_of_reads, ISNULL(CAST(1.0 * vfs.io_stall_read_ms / NULLIF(vfs.num_of_reads, 0) AS decimal(12,1)), 0),
+ vfs.num_of_writes, ISNULL(CAST(1.0 * vfs.io_stall_write_ms / NULLIF(vfs.num_of_writes, 0) AS decimal(12,1)), 0)
+FROM sys.dm_io_virtual_file_stats(NULL, NULL) vfs
+JOIN sys.master_files mf ON mf.database_id = vfs.database_id AND mf.file_id = vfs.file_id
+WHERE (vfs.num_of_reads >= 1000 AND vfs.io_stall_read_ms >= 20 * vfs.num_of_reads)
+   OR (vfs.num_of_writes >= 1000 AND vfs.io_stall_write_ms >= 20 * vfs.num_of_writes)
+ORDER BY vfs.io_stall_read_ms + vfs.io_stall_write_ms DESC""",
+        "cols": ["database", "file", "type", "reads", "avg_read_ms", "writes", "avg_write_ms"],
+        "severity": "medium",
+        "fix": "These are averages since startup and hide spikes: take two snapshots of "
+               "sys.dm_io_virtual_file_stats a few minutes apart under normal load and compare. "
+               "If still slow, check the storage path (disk queue, SAN/VM host, antivirus scanning "
+               "data files) and the queries driving the I/O (S12 PAGEIOLATCH/WRITELOG waits, S14).",
+    },
 ]
 
 DB_CHECKS = [
@@ -195,7 +217,7 @@ GROUP BY t.schema_id, t.name HAVING SUM(p.rows) >= 10000""",
 SELECT OBJECT_SCHEMA_NAME(a.object_id) + '.' + OBJECT_NAME(a.object_id), a.name, b.name, a.keycols
 FROM k a JOIN k b ON a.object_id = b.object_id AND a.keycols = b.keycols AND a.index_id < b.index_id""",
         "cols": ["table", "index_a", "index_b", "key_column_ids"], "severity": "medium",
-        "fix": "Drop the extra copy after checking hints and constraints. Each copy slows every write.",
+        "fix": "Potential duplicates: the keys match, but INCLUDE columns, filters and uniqueness are not compared. Before dropping one, compare the full definitions, keep any index that enforces uniqueness or a constraint, and check index hints that name it. Each extra index adds overhead to inserts, deletes and key updates.",
     },
     {
         "id": "D03", "title": "Left-prefix overlapping indexes", "area": "Schema",
@@ -210,7 +232,7 @@ SELECT OBJECT_SCHEMA_NAME(a.object_id) + '.' + OBJECT_NAME(a.object_id), a.name,
 FROM k a JOIN k b ON a.object_id = b.object_id AND a.index_id <> b.index_id
  AND b.keycols LIKE a.keycols + ',%' AND a.is_unique = 0""",
         "cols": ["table", "narrower_index", "covered_by"], "severity": "low",
-        "fix": "The narrower index is usually redundant; confirm usage before dropping.",
+        "fix": "Potential overlap: the wider index can often serve seeks that use the narrower one, but INCLUDE columns and filters are not compared. Compare the full definitions and usage before dropping.",
     },
     {
         "id": "D04", "title": "Untrusted foreign keys / check constraints", "area": "Schema",

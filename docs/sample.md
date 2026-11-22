@@ -1,6 +1,6 @@
 # SQL Server Health Check (sample, demo data)
 
-- Run: 2026-01-15T09:00:00, 2.3 s, 14 instance checks + 6 per-database checks over 1 user database(s).
+- Run: 2026-01-15T09:00:00, 2.3 s, 15 instance checks + 6 per-database checks over 1 user database(s).
 - Server: SQL Server 16.0.4305.5 RTM, Developer Edition \(64\-bit\), 4 CPUs, 16384 MB RAM, up 0 h.
 - Access: catalog views and DMVs only, sent as SELECT statements. No user table rows read; no data or settings changed.
 - Query text: literals redacted (strings, numbers, hex replaced with ?).
@@ -44,7 +44,7 @@
 |---|---|
 | DemoShop | NEVER |
 
-**Fix:** Add log backups every 15-60 min, or switch to SIMPLE if point-in-time restore is not needed. The log grows without limit until then.
+**Fix:** Add log backups (Microsoft suggests every 15-30 min as a start, more often to lose less data), or switch to SIMPLE if point-in-time restore is not needed. Until then the log keeps growing.
 
 ### S04 [HIGH] Risky database options (Configuration, \(instance\))
 
@@ -52,7 +52,7 @@
 |---|---|
 | DemoShop | AUTO\_SHRINK ON; PAGE\_VERIFY NONE; |
 
-**Fix:** Set AUTO_SHRINK OFF, AUTO_CLOSE OFF, PAGE_VERIFY CHECKSUM, TRUSTWORTHY OFF (in a change window).
+**Fix:** Set AUTO_SHRINK OFF, AUTO_CLOSE OFF and PAGE_VERIFY CHECKSUM. Set TRUSTWORTHY OFF unless an application feature needs it (for example cross-database Service Broker). Use a change window.
 
 ### D01 [MEDIUM] Large heaps (tables without a clustered index) (Schema, DemoShop)
 
@@ -68,7 +68,7 @@
 |---|---|---|---|
 | dbo.Orders | IX\_Orders\_Cust | IX\_Orders\_Cust\_Dup | 2 |
 
-**Fix:** Drop the extra copy after checking hints and constraints. Each copy slows every write.
+**Fix:** Potential duplicates: the keys match, but INCLUDE columns, filters and uniqueness are not compared. Before dropping one, compare the full definitions, keep any index that enforces uniqueness or a constraint, and check index hints that name it. Each extra index adds overhead to inserts, deletes and key updates.
 
 ### S05 [MEDIUM] Old compatibility level (Configuration, \(instance\))
 
@@ -88,7 +88,7 @@
 | backup compression default | 0 |
 | optimize for ad hoc workloads | 0 |
 
-**Fix:** Cap max server memory (leave OS headroom), raise cost threshold (~50), turn on optimize for ad hoc workloads and backup compression.
+**Fix:** Cap max server memory (leave OS headroom). Raise cost threshold for parallelism in small steps and watch a full business cycle. Set MAXDOP per the Microsoft NUMA guidance (8 on one NUMA node with more than 8 logical CPUs). Consider optimize for ad hoc workloads, and backup compression if CPU allows.
 
 ### S08 [MEDIUM] Sysadmin members (non-system) (Security, \(instance\))
 
@@ -107,7 +107,7 @@
 |---|---|---|---|
 | legacy\_app | off | off | enabled |
 
-**Fix:** Turn CHECK_POLICY ON and rotate the password.
+**Fix:** Turn CHECK_POLICY ON and rotate the password. This also turns on expiry and lockout, which can break an application login; set CHECK_EXPIRATION to match your password-rotation process.
 
 ### S13 [MEDIUM] Top missing-index requests (Performance, \(instance\))
 
@@ -124,7 +124,7 @@
 | dbo.Orders | IX\_Orders\_Cust | IX\_Orders\_Cust\_Date |
 | dbo.Orders | IX\_Orders\_Cust\_Dup | IX\_Orders\_Cust\_Date |
 
-**Fix:** The narrower index is usually redundant; confirm usage before dropping.
+**Fix:** Potential overlap: the wider index can often serve seeks that use the narrower one, but INCLUDE columns and filters are not compared. Compare the full definitions and usage before dropping.
 
 ### D04 [LOW] Untrusted foreign keys / check constraints (Schema, DemoShop)
 
@@ -161,7 +161,7 @@
 |---|
 | sa |
 
-**Fix:** Disable or rename sa once named admin logins exist.
+**Fix:** Disable sa once named admin logins exist. A disabled login can still be impersonated, so also review IMPERSONATE grants.
 
 ## Context (no action implied)
 

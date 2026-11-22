@@ -53,6 +53,7 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 | S08 | Non-system sysadmin members | medium |
 | S09 | SQL logins with password policy off | medium |
 | S13 | Top missing-index requests | medium |
+| S21 | Slow file I/O: average read or write latency >= 20 ms since startup (files with >= 1000 I/Os) | medium |
 | D01 | Large heaps | medium |
 | D02 | Duplicate indexes | medium |
 | S06 | Percent-based file growth | low |
@@ -65,6 +66,18 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 
 The report also warns when uptime is under 7 days (DMV stats reset at restart) and when
 AUTO_CLOSE is on (it empties DMV stats for that database).
+
+S21 reads `sys.dm_io_virtual_file_stats` joined to `sys.master_files` (`VIEW SERVER STATE`)
+and shows logical file names only, never physical paths. Its numbers are averages since each
+file came online, so they hide short spikes; Microsoft puts the point where users start to
+notice at about 10-15 ms per transfer
+([Troubleshoot slow SQL Server performance caused by I/O issues](https://learn.microsoft.com/troubleshoot/sql/database-engine/performance/troubleshoot-sql-io-performance)).
+The lab container's fast disk produces no S21 rows,
+so this is what a finding looks like (illustrative values, not lab output):
+
+| database | file | type | reads | avg_read_ms | writes | avg_write_ms |
+|---|---|---|---|---|---|---|
+| Sales | Sales_log | LOG | 12 | 0.4 | 48210 | 27.3 |
 
 ## Quick start
 
@@ -80,7 +93,9 @@ AUTO_CLOSE is on (it empties DMV stats for that database).
    ```
 
    The password must not contain a single quote (`'`): sqlcmd pastes `$(HC_PW)` into the
-   script as text.
+   script as text. The script only creates a new login: if a login or msdb user named
+   `hc_reader` already exists, it stops and changes nothing (an old `hc_reader` may hold
+   other rights). Run `sql/remove-reader.sql` first if that login is yours.
 
 3. Run the check:
 
@@ -123,10 +138,26 @@ placeholders). Rebuild both from `docs/sample-results.json` with `python3 docs/m
 
 **Never run `lab/seed-demo.sql` on a real server.** It plants defects on purpose.
 
+## Compare two runs (re-check)
+
+After fixes, run the check again into a new folder, then compare the two JSON files:
+
+    python3 -m sqlhc.compare first/results.json recheck/results.json --out compare-out
+
+This writes `compare.md` and `compare.json`. Each finding row is one item, matched by
+check, scope and the check's key columns (login, table + index, ...). Items are **fixed**,
+**new**, **changed** (same item, other values moved), **unchanged** or **unknown**. A check
+that errored, malformed rows, or a database missing from one run (or an unreadable database
+list) are unknown: an error is never shown as a fix. S13 and S21 return only a top 10 / top 15;
+an item that drops out of a full list is unknown, because it may only have been ranked out.
+Checks that use counters since startup (S13, D05, S21) reset at restart, so a "fixed" there can
+mean only that the counters were cleared. The tool reads two files; it never connects to a server.
+
 ## What it does not check (yet)
 
 VLF counts, last good CHECKDB (needs `DBCC DBINFO`, not read-only), SQL Agent job failures
-(needs `msdb.dbo.sysjobhistory`), I/O latency (`sys.dm_io_virtual_file_stats`).
+(needs `msdb.dbo.sysjobhistory`), I/O latency over a short window (S21 shows averages
+since startup only; a two-snapshot delta needs `WAITFOR`, which the guard refuses).
 Pull requests welcome, as long as every new check stays a single read-only `SELECT`.
 
 ## How this compares to the First Responder Kit
@@ -146,7 +177,7 @@ What is different here:
 | | This kit | First Responder Kit |
 |---|---|---|
 | Install on the server | Nothing. Queries are sent from the client | Stored procedures, usually in `master` |
-| Checks | 20 single `SELECT` checks | Hundreds of checks across several procedures |
+| Checks | 21 single `SELECT` checks | Hundreds of checks across several procedures |
 | Login | Least-privilege reader; refuses to run as sysadmin or any write-capable login | Not restricted; some checks need high rights (e.g. trace-flag checks via `DBCC TRACESTATUS`) |
 | Output | One Markdown report, one self-contained HTML report, and JSON | Result sets in SSMS, optional output tables |
 | Query text | Literals redacted by default | Full query text and plans |

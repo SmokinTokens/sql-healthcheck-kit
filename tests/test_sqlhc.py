@@ -112,6 +112,15 @@ class RedactTests(unittest.TestCase):
          "SELECT \"?\" FROM t WHERE d > '?' AND v = ?"),
         ("SELECT a FROM t WHERE b = 0X1F2E3D", "SELECT a FROM t WHERE b = 0x?"),
         ("SELECT a FROM t WHERE b = \"secret value\"", "SELECT a FROM t WHERE b = \"?\""),
+        # T-SQL block comments nest: text after the inner */ is still comment
+        ("SELECT 1 /* a /* b */ x=ann@x.com */ FROM t", "SELECT ? FROM t"),
+        ("SELECT /* 1 /* 2 /* 3 */ ann@x.com */ 4455667788 */ c FROM t", "SELECT c FROM t"),
+        ("SELECT c FROM t /* a /* b */ cut off ann@x.com 998877", "SELECT c FROM t"),
+        ("SELECT '/* not a comment' AS c, d FROM t WHERE e = 123456",
+         "SELECT '?' AS c, d FROM t WHERE e = ?"),
+        ("SELECT [a/*b] FROM t WHERE x = 'bob@y.org' -- /* tail", "SELECT [a/*b] FROM t WHERE x = '?'"),
+        ("SELECT 1 /* -- dash in comment ann@x.com */ FROM t", "SELECT ? FROM t"),
+        ("SELECT a */ FROM t WHERE b = 778899", "SELECT a */ FROM t WHERE b = ?"),
     ]
 
     def test_cases(self):
@@ -285,6 +294,94 @@ class ProbeTests(unittest.TestCase):
             self.assertIn(col, PRIV_PROBE["cols"])
         self.assertEqual(PRIV_PROBE["sql"].count("HAS_PERMS_BY_NAME") + 1, len(PRIV_PROBE["cols"]))
         self.assertEqual(DB_PRIV_PROBE["sql"].count("HAS_PERMS_BY_NAME") + 7, len(DB_PRIV_PROBE["cols"]))
+
+
+class IoLatencyTests(unittest.TestCase):
+    """S21: per-file I/O latency from sys.dm_io_virtual_file_stats."""
+    S21 = next(c for c in SERVER_CHECKS if c["id"] == "S21")
+
+    def test_shape_and_guard(self):
+        c = self.S21
+        guard(c["sql"])
+        self.assertEqual(c["severity"], "medium")
+        self.assertTrue(c["fix"])
+        # One output column per SELECT expression (7) and 7 names.
+        self.assertEqual(len(c["cols"]), 7)
+        self.assertIn("sys.dm_io_virtual_file_stats(NULL, NULL)", c["sql"])
+
+    def test_reads_only_view_server_state_objects(self):
+        sql = self.S21["sql"]
+        objects = set(re.findall(r"\bsys\.\w+", sql))
+        self.assertEqual(objects, {"sys.dm_io_virtual_file_stats", "sys.master_files"})
+        # No physical paths in reports (drive layout is sensitive).
+        self.assertNotIn("physical_name", sql)
+
+    def test_thresholds_and_divide_by_zero_safe(self):
+        sql = self.S21["sql"]
+        self.assertIn("num_of_reads >= 1000 AND vfs.io_stall_read_ms >= 20 * vfs.num_of_reads", sql)
+        self.assertIn("num_of_writes >= 1000 AND vfs.io_stall_write_ms >= 20 * vfs.num_of_writes", sql)
+        self.assertEqual(sql.count("NULLIF("), 2)
+        # A file busy on one side only shows 0 for the other average, not NULL.
+        self.assertEqual(sql.count("ISNULL(CAST(1.0 * vfs.io_stall_"), 2)
+
+    def test_lab_output_parses_to_seven_columns(self):
+        # Shape of real sqlcmd output from the SQL Server 2022 lab (zero-threshold run).
+        out = ("master\x1fmaster\x1fROWS\x1f72\x1f.6\x1f162\x1f.5\n"
+               "DemoShop\x1fDemoShop_log\x1fLOG\x1f30\x1f.3\x1f2210\x1f.1\n\n(2 rows affected)\n")
+        d = [0]
+        rows = rows_of(out, len(self.S21["cols"]), d)
+        self.assertEqual(d[0], 0)
+        self.assertEqual(rows[1], ["DemoShop", "DemoShop_log", "LOG", "30", ".3", "2210", ".1"])
+
+    def test_finding_renders_in_report(self):
+        server = {c["id"]: {"rows": []} for c in SERVER_CHECKS}
+        server["S01"] = {"rows": [["16.0.1", "RTM", "Developer", "4", "8000", "300"]]}
+        server["S21"] = {"rows": [["DemoShop", "DemoShop_log", "LOG", "12", "0.4", "48210", "27.3"]]}
+        data = {"started": "2026-01-01T00:00:00", "secs": 1.0, "probe": {}, "powerful": [],
+                "dbs": [], "skipped_dbs": [], "results": {"server": server, "db": {}},
+                "full_query_text": False}
+        self.assertEqual([f[0]["id"] for f in findings_of(data)], ["S21"])
+        md, counts, _ = render_markdown(data)
+        self.assertEqual(counts, {"high": 0, "medium": 1, "low": 0})
+        self.assertIn("S21 [MEDIUM] Slow file I/O", md)
+        self.assertIn("27.3", md)
+
+
+class GrantReaderScriptTests(unittest.TestCase):
+    """sql/grant-reader.sql must refuse a pre-existing hc_reader before it grants anything."""
+
+    def setUp(self):
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sql", "grant-reader.sql")
+        with open(path, encoding="utf-8") as f:
+            self.sql = f.read()
+        self.code = "\n".join(l.split("--", 1)[0] for l in self.sql.splitlines())
+
+    def test_single_batch(self):
+        # One batch: THROW then aborts the rest even without sqlcmd -b.
+        go = [l for l in self.code.splitlines() if l.strip().upper() == "GO"]
+        self.assertEqual(len(go), 1)
+        self.assertEqual(self.code.rstrip().splitlines()[-1].strip().upper(), "GO")
+        self.assertNotRegex(self.code, r"(?im)^\s*USE\s")
+
+    def test_refuses_existing_login_and_msdb_user_first(self):
+        first_write = min(self.code.index(k) for k in ("CREATE LOGIN", "GRANT ", "sp_executesql"))
+        login = re.search(r"IF SUSER_ID\('hc_reader'\) IS NOT NULL\s+THROW 5000\d", self.code)
+        user = re.search(r"IF EXISTS \(SELECT 1 FROM msdb\.sys\.database_principals WHERE name = N'hc_reader'\)\s+THROW",
+                         self.code)
+        self.assertIsNotNone(login)
+        self.assertIsNotNone(user)
+        assert login is not None and user is not None
+        self.assertLess(max(login.start(), user.start()), first_write)
+
+    def test_create_login_is_unconditional(self):
+        self.assertNotRegex(self.code, r"IS NULL\s+CREATE")
+        self.assertIn("CREATE LOGIN hc_reader", self.code)
+
+    def test_grants_unchanged(self):
+        for g in ("GRANT VIEW SERVER STATE TO hc_reader", "GRANT VIEW ANY DEFINITION TO hc_reader",
+                  "GRANT CONNECT ANY DATABASE TO hc_reader", "GRANT SELECT ON dbo.backupset TO hc_reader"):
+            self.assertIn(g, self.code)
+        self.assertEqual(self.code.count("GRANT "), 4)
 
 
 if __name__ == "__main__":
