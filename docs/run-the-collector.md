@@ -49,7 +49,7 @@ the server's self-signed certificate for this check, add `-C` to every `sqlcmd`
 command in this guide and `--trust-cert` in step 3. Both skip the check of the
 server's identity, so use them only on your own network.
 
-When it works, the only line it prints is `Changed database context to 'msdb'.`
+When it works, it prints nothing at all. That silence is the success signal; the confirm step below proves the permissions.
 Any line that starts with `Msg` is an error: stop and send us that line (not the password).
 If a login named `hc_reader` already exists from an earlier check, run step 6 first.
 
