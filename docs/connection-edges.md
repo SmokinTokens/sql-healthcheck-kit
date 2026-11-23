@@ -7,7 +7,7 @@ The checks below were run in a lab, not on a buyer's server. See the end of this
 
 | Your server | Use | Result in the lab |
 |---|---|---|
-| Default instance on port 1433 | `-S sql01` | works |
+| Default instance on port 1433 | `-S sql01` | not tested (lab used 14333 only; a bare name there failed, as expected) |
 | Any instance on another port, for example 14333 | `-S sql01,14333` | works |
 | Same, forced TCP | `-S tcp:sql01,14333` | works |
 | Named instance, port known | `-S 'sql01\PROD,14333'` | works (the port wins; the name is not checked) |
@@ -43,9 +43,11 @@ gave the certificate error.
 `-N` option and always uses sqlcmd's default (Mandatory). If your server forces
 Strict, the collector cannot connect: tell us before you buy. In the lab,
 SQL Server 2022 on Linux refused every Strict connection, also with `-C` and with
-`-J`/`-F`; this matches a public report (microsoft/mssql-docker issue #878).
-SQL Server 2022 on Windows, and 2025, support Strict (Microsoft Learn, "Connect to
-SQL Server with strict encryption"). The collector was not tested against them.
+`-J`/`-F`. A public report shows the same on the 2022 Linux container
+(https://github.com/microsoft/mssql-docker/issues/878; a later comment there says
+2025 works). Microsoft documents Strict for SQL Server 2022 and later
+(https://learn.microsoft.com/en-us/sql/relational-databases/security/networking/connect-with-strict-encryption).
+These are public sources, not lab results. The collector was not tested against them.
 
 ## 3. Error texts and what they mean
 
@@ -81,11 +83,12 @@ Throwaway SQL Server 2022 container (16.0.4325.4 CU28) with `tcpport = 14333`,
 `forceencryption = 1`, `tlsprotocols = 1.2` and a lab certificate (CN and SAN
 `sqllab.test`) signed by a throwaway lab CA. Client: sqlcmd 18.7.0001.1 inside the
 container, login `hc_reader` from `sql/grant-reader.sql`. 19 sqlcmd cases and 6
-collector cases; every case that worked read `encrypt_option = TRUE` and
-`local_tcp_port = 14333` back from `sys.dm_exec_connections`. The collector ran in
+collector cases. Every sqlcmd case that worked read `encrypt_option = TRUE` and
+`local_tcp_port = 14333` back from `sys.dm_exec_connections`. The collector cases
+that worked used the same server settings; their own output does not show these values. The collector ran in
 the lab with the lab-only `--docker` option. Not tested: a Windows client, a
 remote host, SQL Server Browser, SQL Server 2025, Azure SQL.
 A second lab run with `tlsprotocols = 1.2,1.3` did not accept any connection
-(Mandatory gave `Unable to complete login process due to delay in login response`;
+(manual sqlcmd probe as sa; the matrix script stopped at its readiness wait). Mandatory gave `Unable to complete login process due to delay in login response`;
 Strict gave 0x2746). The cause was not proven; issue #878 cites the Microsoft Learn
 TLS 1.3 page as listing Windows only for TLS 1.3 support.
