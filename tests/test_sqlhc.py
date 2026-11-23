@@ -364,7 +364,7 @@ class GrantReaderScriptTests(unittest.TestCase):
         self.assertNotRegex(self.code, r"(?im)^\s*USE\s")
 
     def test_refuses_existing_login_and_msdb_user_first(self):
-        first_write = min(self.code.index(k) for k in ("CREATE LOGIN", "GRANT ", "sp_executesql"))
+        first_write = min(self.code.index(k) for k in ("CREATE LOGIN", "GRANT ", "EXEC ("))
         login = re.search(r"IF SUSER_ID\('hc_reader'\) IS NOT NULL\s+THROW 5000\d", self.code)
         user = re.search(r"IF EXISTS \(SELECT 1 FROM msdb\.sys\.database_principals WHERE name = N'hc_reader'\)\s+THROW",
                          self.code)
@@ -382,6 +382,50 @@ class GrantReaderScriptTests(unittest.TestCase):
                   "GRANT CONNECT ANY DATABASE TO hc_reader", "GRANT SELECT ON dbo.backupset TO hc_reader"):
             self.assertIn(g, self.code)
         self.assertEqual(self.code.count("GRANT "), 4)
+
+    def test_no_sp_executesql_for_bin2_servers(self):
+        # AZ-1407: SQL Server 2022 (Linux, CU28) with server collation Latin1_General_100_BIN2
+        # fails every sp_executesql call with Msg 17750; EXEC (N'...') works there.
+        self.assertNotIn("sp_executesql", self.code.lower())
+        self.assertIn("EXEC (N'USE msdb; CREATE USER hc_reader FOR LOGIN hc_reader;", self.code)
+        seed = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lab", "seed-demo.sql")
+        with open(seed, encoding="utf-8") as f:
+            seed_code = "\n".join(l.split("--", 1)[0] for l in f.read().splitlines())
+        self.assertNotIn("sp_executesql", seed_code.lower())
+
+
+class CaseSensitiveCollationTests(unittest.TestCase):
+    """AZ-1407: buyers run on CS/BIN2 servers (Latin1_General_CS_AS, *_BIN2).
+    There, catalog names and identifiers resolve case-sensitively, and string
+    comparisons follow the column collation. Offline proof only; lab run pending."""
+    QUOTED = re.compile(r"N?'(?:[^']|'')*'")
+
+    def _queries(self):
+        return [(c["id"], c["sql"]) for c in ALL]
+
+    def test_catalog_object_names_are_lowercase(self):
+        for cid, sql in self._queries():
+            body = self.QUOTED.sub("''", sql)
+            for name in re.findall(r"\bsys\.(\w+)", body):
+                self.assertEqual(name, name.lower(), f"{cid}: sys.{name}")
+
+    def test_column_and_alias_spelling_is_consistent(self):
+        # One spelling per identifier inside each query (s.User_Seeks vs s.user_seeks breaks on CS).
+        for cid, sql in self._queries():
+            body = self.QUOTED.sub("''", sql)
+            seen = {}
+            for tok in re.findall(r"\.(\w+)", body):
+                seen.setdefault(tok.lower(), set()).add(tok)
+            mixed = {k: v for k, v in seen.items() if len(v) > 1}
+            self.assertFalse(mixed, f"{cid}: {mixed}")
+
+    def test_sysadmin_service_sid_filter_ignores_case(self):
+        # Setup creates 'NT Service\MSSQLSERVER' (mixed case) next to 'NT SERVICE\SQLWriter'.
+        # On a CS server a plain NOT LIKE 'NT SERVICE\%' lists the engine's own service SID as a
+        # finding; the filter must compare case-insensitively whatever the server collation.
+        s08 = next(c for c in SERVER_CHECKS if c["id"] == "S08")
+        guard(s08["sql"])
+        self.assertIn("m.name COLLATE Latin1_General_CI_AS NOT LIKE 'NT SERVICE\\%'", s08["sql"])
 
 
 if __name__ == "__main__":
