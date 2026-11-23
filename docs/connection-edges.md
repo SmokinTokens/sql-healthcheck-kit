@@ -90,5 +90,5 @@ the lab with the lab-only `--docker` option. Not tested: a Windows client, a
 remote host, SQL Server Browser, SQL Server 2025, Azure SQL.
 A second lab run with `tlsprotocols = 1.2,1.3` did not accept any connection
 (manual sqlcmd probe as sa; the matrix script stopped at its readiness wait). Mandatory gave `Unable to complete login process due to delay in login response`;
-Strict gave 0x2746). The cause was not proven; issue #878 cites the Microsoft Learn
+Strict gave 0x2746. The cause was not proven; issue #878 cites the Microsoft Learn
 TLS 1.3 page as listing Windows only for TLS 1.3 support.
