@@ -364,7 +364,7 @@ class GrantReaderScriptTests(unittest.TestCase):
         self.assertNotRegex(self.code, r"(?im)^\s*USE\s")
 
     def test_refuses_existing_login_and_msdb_user_first(self):
-        first_write = min(self.code.index(k) for k in ("CREATE LOGIN", "GRANT ", "sp_executesql"))
+        first_write = min(self.code.index(k) for k in ("CREATE LOGIN", "GRANT ", "EXEC ("))
         login = re.search(r"IF SUSER_ID\('hc_reader'\) IS NOT NULL\s+THROW 5000\d", self.code)
         user = re.search(r"IF EXISTS \(SELECT 1 FROM msdb\.sys\.database_principals WHERE name = N'hc_reader'\)\s+THROW",
                          self.code)
@@ -382,6 +382,16 @@ class GrantReaderScriptTests(unittest.TestCase):
                   "GRANT CONNECT ANY DATABASE TO hc_reader", "GRANT SELECT ON dbo.backupset TO hc_reader"):
             self.assertIn(g, self.code)
         self.assertEqual(self.code.count("GRANT "), 4)
+
+    def test_no_sp_executesql_for_bin2_servers(self):
+        # AZ-1407: SQL Server 2022 (Linux, CU28) with server collation Latin1_General_100_BIN2
+        # fails every sp_executesql call with Msg 17750; EXEC (N'...') works there.
+        self.assertNotIn("sp_executesql", self.code.lower())
+        self.assertIn("EXEC (N'USE msdb; CREATE USER hc_reader FOR LOGIN hc_reader;", self.code)
+        seed = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lab", "seed-demo.sql")
+        with open(seed, encoding="utf-8") as f:
+            seed_code = "\n".join(l.split("--", 1)[0] for l in f.read().splitlines())
+        self.assertNotIn("sp_executesql", seed_code.lower())
 
 
 class CaseSensitiveCollationTests(unittest.TestCase):

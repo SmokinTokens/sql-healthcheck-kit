@@ -45,7 +45,7 @@ IF SUSER_ID('legacy_app') IS NULL
 BEGIN
   DECLARE @pw nvarchar(80) = CONVERT(nvarchar(36), NEWID()) + N'-' + CONVERT(nvarchar(36), NEWID());
   DECLARE @s nvarchar(400) = N'CREATE LOGIN legacy_app WITH PASSWORD = ' + QUOTENAME(@pw, '''') + N', CHECK_POLICY = OFF;';
-  EXEC sys.sp_executesql @s;
+  EXEC (@s);  -- not sp_executesql: it fails with Msg 17750 on BIN2 servers (2022 Linux)
 END
 ALTER SERVER ROLE sysadmin ADD MEMBER legacy_app;
 GO

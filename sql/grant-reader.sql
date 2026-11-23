@@ -29,6 +29,7 @@ CREATE LOGIN hc_reader WITH PASSWORD = N'$(HC_PW)', CHECK_POLICY = ON, DEFAULT_D
 GRANT VIEW SERVER STATE TO hc_reader;       -- DMVs: waits, query stats, missing indexes
 GRANT VIEW ANY DEFINITION TO hc_reader;     -- catalog metadata (indexes, constraints, logins list)
 GRANT CONNECT ANY DATABASE TO hc_reader;    -- connect to each database for its catalog views
-EXEC msdb.sys.sp_executesql
-  N'CREATE USER hc_reader FOR LOGIN hc_reader; GRANT SELECT ON dbo.backupset TO hc_reader;'; -- backup history only
+-- EXEC (...) not sp_executesql: on a Latin1_General_100_BIN2 server, SQL Server 2022 on
+-- Linux fails every sp_executesql call with Msg 17750 (seen in lab, CU28).
+EXEC (N'USE msdb; CREATE USER hc_reader FOR LOGIN hc_reader; GRANT SELECT ON dbo.backupset TO hc_reader;'); -- backup history only
 GO
