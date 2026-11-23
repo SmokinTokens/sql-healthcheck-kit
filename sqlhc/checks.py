@@ -94,7 +94,7 @@ WHERE (name = 'max server memory (MB)' AND CAST(value_in_use AS bigint) = 214748
 FROM sys.server_role_members rm
 JOIN sys.server_principals r ON r.principal_id = rm.role_principal_id AND r.name = 'sysadmin'
 JOIN sys.server_principals m ON m.principal_id = rm.member_principal_id
-WHERE m.name NOT LIKE 'NT SERVICE\\%' AND m.name NOT LIKE '##%'""",
+WHERE m.name COLLATE Latin1_General_CI_AS NOT LIKE 'NT SERVICE\\%' AND m.name NOT LIKE '##%'""",
         "cols": ["login", "type", "state"], "severity": "medium",
         "fix": "Keep sysadmin to named admins only. Application logins get database roles, not sysadmin.",
     },

@@ -384,5 +384,39 @@ class GrantReaderScriptTests(unittest.TestCase):
         self.assertEqual(self.code.count("GRANT "), 4)
 
 
+class CaseSensitiveCollationTests(unittest.TestCase):
+    """AZ-1407: buyers run on CS/BIN2 servers (Latin1_General_CS_AS, *_BIN2).
+    There, catalog names and identifiers resolve case-sensitively, and string
+    comparisons follow the column collation. Offline proof only; lab run pending."""
+    QUOTED = re.compile(r"N?'(?:[^']|'')*'")
+
+    def _queries(self):
+        return [(c["id"], c["sql"]) for c in ALL]
+
+    def test_catalog_object_names_are_lowercase(self):
+        for cid, sql in self._queries():
+            body = self.QUOTED.sub("''", sql)
+            for name in re.findall(r"\bsys\.(\w+)", body):
+                self.assertEqual(name, name.lower(), f"{cid}: sys.{name}")
+
+    def test_column_and_alias_spelling_is_consistent(self):
+        # One spelling per identifier inside each query (s.User_Seeks vs s.user_seeks breaks on CS).
+        for cid, sql in self._queries():
+            body = self.QUOTED.sub("''", sql)
+            seen = {}
+            for tok in re.findall(r"\.(\w+)", body):
+                seen.setdefault(tok.lower(), set()).add(tok)
+            mixed = {k: v for k, v in seen.items() if len(v) > 1}
+            self.assertFalse(mixed, f"{cid}: {mixed}")
+
+    def test_sysadmin_service_sid_filter_ignores_case(self):
+        # Setup creates 'NT Service\MSSQLSERVER' (mixed case) next to 'NT SERVICE\SQLWriter'.
+        # On a CS server a plain NOT LIKE 'NT SERVICE\%' lists the engine's own service SID as a
+        # finding; the filter must compare case-insensitively whatever the server collation.
+        s08 = next(c for c in SERVER_CHECKS if c["id"] == "S08")
+        guard(s08["sql"])
+        self.assertIn("m.name COLLATE Latin1_General_CI_AS NOT LIKE 'NT SERVICE\\%'", s08["sql"])
+
+
 if __name__ == "__main__":
     unittest.main()
