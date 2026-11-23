@@ -11,7 +11,7 @@ The checks below were run in a lab, not on a buyer's server. See the end of this
 | Any instance on another port, for example 14333 | `-S sql01,14333` | works |
 | Same, forced TCP | `-S tcp:sql01,14333` | works |
 | Named instance, port known | `-S 'sql01\PROD,14333'` | works (the port wins; the name is not checked) |
-| Named instance, port not known | `-S 'sql01\PROD'` | works only if SQL Server Browser (UDP 1434) answers. SQL Server on Linux has no Browser, so this fails there |
+| Named instance, port not known | `-S 'sql01\PROD'` | not tested (no SQL Server Browser in the lab). Per Microsoft's docs it needs SQL Server Browser (UDP 1434), which SQL Server on Linux does not have |
 | `host:port` with a colon | do not use | fails: sqlcmd reads it as a host name |
 
 Use the same value in `--server` for the collector. Keep single quotes around a value
@@ -33,8 +33,10 @@ server certificate. The collector does the same. Choose one:
    connect with the name that is in the certificate. No extra flag. Lab: works.
 2. **Accept the server's certificate without a check:** add `-C` to `sqlcmd` and
    `--trust-cert` to the collector (same as `TrustServerCertificate=yes`). The
-   connection is still encrypted, but the client does not prove who the server is.
-   Use it only on your own network.
+   connection is still encrypted, but the client does not prove who the server is,
+   so anyone who can intercept the connection can pretend to be the server.
+   Use it only in an isolated, disposable test lab. On production servers, use
+   option 1: a trusted certificate and the host name that is in it.
 
 `-No` (Optional) does not help when the server forces encryption: the lab still
 gave the certificate error.
