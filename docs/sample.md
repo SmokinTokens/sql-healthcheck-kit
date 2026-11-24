@@ -10,8 +10,8 @@
 
 Top 3 risk(s), most serious first (data loss before security, then configuration, then speed):
 
-1. **Databases without a recent full backup (7 days)** (Recoverability, high, \(instance\)): If a disk fails or data is deleted today, the newest copy you can restore is more than a week old, or there is none.
-2. **FULL recovery databases without log backups (24 h)** (Recoverability, high, \(instance\)): Without regular log backups you can only restore to the last full backup, so a failure can lose up to a day or more of work, and the log file keeps growing until the disk fills.
+1. **Databases without a recent full backup (7 days)** (Recoverability, high, \(instance\)): This server has no record of a full backup in the last 7 days, so unless backups are taken elsewhere, a disk failure or a mistake could lose a week or more of data; confirm with a test restore.
+2. **FULL recovery databases without log backups (24 h)** (Recoverability, high, \(instance\)): This server has no record of a log backup in the last 24 hours, so a failure could lose more work than the business expects and the log file may keep growing; confirm the backup chain.
 3. **Sysadmin members (non-system)** (Security, medium, \(instance\)): Every extra sysadmin can read, change or delete any data on the server, so one stolen password or mistake can affect the whole business.
 
 ## Summary

@@ -218,8 +218,20 @@ class ReportTests(unittest.TestCase):
         data["results"]["db"]["Shop"]["D01"] = {"rows": [], "error": "denied"}
         md, _, errors = render_markdown(data)
         self.assertEqual(len(errors), 1)
-        self.assertIn("No findings. Nothing in this run needs action", md)
+        self.assertNotIn("Nothing in this run needs action", md)
+        self.assertIn("assessment is INCOMPLETE", md)
         self.assertIn("1 check(s) could not run, so this summary may miss risks", md)
+
+    def test_exec_summary_clean_run(self):
+        data = self.fake()
+        for cid in ("S04", "S10"):
+            data["results"]["server"][cid] = {"rows": []}
+        data["results"]["db"]["Shop"]["D01"] = {"rows": []}
+        md, _, errors = render_markdown(data)
+        self.assertEqual(errors, [])
+        self.assertIn("No findings. Nothing in this run needs action", md)
+        self.assertNotIn("INCOMPLETE", md)
+        self.assertNotIn("could not run", md)
 
     def test_exec_summary_escapes_place_name(self):
         md, _, _ = render_markdown(self._with_db("<b>x</b>"))
