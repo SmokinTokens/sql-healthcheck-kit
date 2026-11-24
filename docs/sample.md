@@ -8,7 +8,7 @@
 
 ## Executive summary
 
-Top 3 risk(s), most serious first (data loss before security, then configuration, then speed):
+Top 3 category-prioritized findings (data loss before security, then configuration, then speed):
 
 1. **Databases without a recent full backup (7 days)** (Recoverability, high, \(instance\)): For the listed databases, this server's backup history shows no full backup in the last 7 days, so a disk failure or mistake could lose data unless backups are kept another way; confirm coverage with a test restore.
 2. **FULL recovery databases without log backups (24 h)** (Recoverability, high, \(instance\)): For the listed databases, this server's backup history shows no log backup in the last 24 hours, so a failure could lose recent work and the log file may keep growing; confirm actual backup coverage.

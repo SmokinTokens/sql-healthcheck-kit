@@ -299,7 +299,7 @@ def render_markdown(data, title="SQL Server Health Check"):
     elif not top:
         L.append("No findings. Nothing in this run needs action; see the context sections below.")
     else:
-        L.append(f"Top {len(top)} risk(s), most serious first (data loss before security, "
+        L.append(f"Top {len(top)} category-prioritized findings (data loss before security, "
                  "then configuration, then speed):")
         L.append("")
         for i, (chk, where, rows) in enumerate(top, 1):
