@@ -25,11 +25,11 @@ SEV_RANK = {"high": 0, "medium": 1, "low": 2, "info": 3}
 
 IMPACT = {
     "S01": "This is the server's basic inventory and shows no risk by itself.",
-    "S02": "This server has no record of a full backup in the last 7 days, so unless backups are taken elsewhere, a disk failure or a mistake could lose a week or more of data; confirm with a test restore.",
-    "S03": "This server has no record of a log backup in the last 24 hours, so a failure could lose more work than the business expects and the log file may keep growing; confirm the backup chain.",
+    "S02": "For the listed databases, this server's backup history shows no full backup in the last 7 days, so a disk failure or mistake could lose data unless backups are kept another way; confirm coverage with a test restore.",
+    "S03": "For the listed databases, this server's backup history shows no log backup in the last 24 hours, so a failure could lose recent work and the log file may keep growing; confirm actual backup coverage.",
     "S04": "These settings can let disk corruption go unnoticed, slow the server down without warning, or let database code gain more rights than intended.",
     "S05": "The databases run on an older query engine level, so they may miss newer query improvements, and a delayed upgrade can carry more risk of slow queries.",
-    "S06": "Percent-based growth makes large files grow in huge jumps that can stall the application while the disk is filled.",
+    "S06": "Files set to grow by a percentage can take larger and larger growth steps as they get bigger, which may pause the application while each step is allocated.",
     "S07": "Default instance settings can let SQL Server starve the operating system of memory or waste CPU, which shows up as slowdowns at busy times.",
     "S08": "Every extra sysadmin can read, change or delete any data on the server, so one stolen password or mistake can affect the whole business.",
     "S09": "Logins with the password policy off can keep weak or never-changed passwords, which makes them easy targets for guessing attacks.",
@@ -41,7 +41,7 @@ IMPACT = {
     "S21": "These files have averaged slow disk reads or writes since startup, which may make the application feel slow when it must go to disk; measure again under normal load.",
     "D01": "Large tables without a clustered index tend to get slower and waste disk space as they grow.",
     "D02": "These indexes share the same key columns and may be duplicates, which may add avoidable work to every write and extra disk space until their full definitions are reviewed.",
-    "D03": "Overlapping indexes add write overhead and disk use that a single index could often cover.",
+    "D03": "These indexes may overlap, which may add write work and disk use that one index could cover; review their full definitions and usage before changing any.",
     "D04": "SQL Server cannot rely on these constraints, so some queries may run slower, and data that breaks the rules may already be stored.",
     "D05": "These indexes show recorded writes but no recorded reads in the stats available, so they may cost write time for no use; watch a full business cycle before removing any.",
     "D06": "This shows database file sizes, for context only.",

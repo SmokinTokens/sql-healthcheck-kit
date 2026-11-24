@@ -222,6 +222,23 @@ class ReportTests(unittest.TestCase):
         self.assertIn("assessment is INCOMPLETE", md)
         self.assertIn("1 check(s) could not run, so this summary may miss risks", md)
 
+    def test_exec_summary_skipped_dbs_is_not_clean(self):
+        data = self.fake()
+        for cid in ("S04", "S10"):
+            data["results"]["server"][cid] = {"rows": []}
+        data["results"]["db"]["Shop"]["D01"] = {"rows": []}
+        data["skipped_dbs"] = ["we\nird"]
+        md, _, errors = render_markdown(data)
+        self.assertEqual(errors, [])
+        self.assertNotIn("Nothing in this run needs action", md)
+        self.assertIn("assessment is INCOMPLETE", md)
+        self.assertIn("1 database(s) were skipped and not checked", md)
+
+    def test_exec_summary_backup_texts_do_not_quantify_loss(self):
+        for cid in ("S02", "S03"):
+            self.assertIn("For the listed databases", IMPACT[cid])
+            self.assertNotIn("week or more", IMPACT[cid])
+
     def test_exec_summary_clean_run(self):
         data = self.fake()
         for cid in ("S04", "S10"):

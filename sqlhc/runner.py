@@ -292,7 +292,8 @@ def render_markdown(data, title="SQL Server Health Check"):
         L.append(f"- Skipped {len(data['skipped_dbs'])} database(s) with unusual names.")
     L += ["", "## Executive summary", ""]
     top = top_findings(findings)
-    if not top and errors:
+    incomplete = bool(errors or data["skipped_dbs"])
+    if not top and incomplete:
         L.append("No findings from the checks that completed, but the assessment is INCOMPLETE: "
                  "do not treat this as a clean result.")
     elif not top:
@@ -308,6 +309,9 @@ def render_markdown(data, title="SQL Server Health Check"):
     if errors:
         L += ["", f"Note: {len(errors)} check(s) could not run, so this summary may miss risks. "
                   "See Check errors at the end."]
+    if data["skipped_dbs"]:
+        L += ["", f"Note: {len(data['skipped_dbs'])} database(s) were skipped and not checked, "
+                  "so this summary may miss risks in them."]
     L += ["", "## Summary", "", f"**{counts['high']} high, {counts['medium']} medium, {counts['low']} low** findings.", ""]
     for chk, where, rows in findings:
         L.append(f"- **{chk['severity'].upper()}** {chk['id']} {chk['title']} - {esc(where)}: {len(rows)} item(s)")
