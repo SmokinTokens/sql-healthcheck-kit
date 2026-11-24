@@ -40,7 +40,7 @@ IMPACT = {
     "S13": "SQL Server estimates that some queries may run faster with an extra index, which may mean slower screens and reports for users; test before adding any.",
     "S14": "This lists the queries that use the most CPU, for context only.",
     "S22": "SQL Server has logged read errors on these database pages, which may mean storage damage and possible data loss; run DBCC CHECKDB and confirm you have good backups.",
-    "S23": "These databases show no successful DBCC CHECKDB in the last 7 days, so damage could go unnoticed until it is also in the backups; schedule a regular integrity check.",
+    "S23": "DBCC CHECKDB is overdue or unverifiable: the last success is older than 7 days, absent, or unreadable; damage could go unnoticed, so verify UNKNOWN dates with a DBA and schedule regular integrity checks.",
     "S21": "These files have averaged slow disk reads or writes since startup, which may make the application feel slow when it must go to disk; measure again under normal load.",
     "S24": "These SQL Agent jobs recorded a failed run in the last 7 days; if any of them does backups, integrity checks or data loads, that work may not have happened, so read each job's history to see what failed.",
     "S25": "These enabled SQL Agent jobs have no enabled schedule, so they run only when something else starts them; if any is meant to run on a timetable, it may have silently stopped.",

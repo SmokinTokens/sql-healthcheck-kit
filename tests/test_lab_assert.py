@@ -48,6 +48,40 @@ class AssertIntegrityTests(unittest.TestCase):
         self.assertEqual(self.run_on(dict(GOOD, S23={"rows": [["master", "NEVER"], ["DemoShop", "NEVER"]]}))[0], 1)
         self.assertEqual(self.run_on(dict(GOOD, S23={"rows": [["DemoShop", "UNKNOWN"]]}))[0], 1)
 
+    def test_malformed_input_is_one_fail_line(self):
+        documents = [None, [], {}, {"results": []}, {"results": {"server": []}}]
+        for cid in ("S22", "S23"):
+            for entry in (None, [], {}, {"rows": None}, {"rows": {}},
+                          {"rows": [None]}, {"rows": ["DemoShop"]},
+                          {"rows": [["DemoShop"]]}, {"rows": [[{}] * 6]}):
+                documents.append({"results": {"server": dict(GOOD, **{cid: entry})}})
+        documents.append({"results": {"server": dict(GOOD, S22={"error": "line one\nline two"})}})
+        for doc in documents:
+            with self.subTest(doc=doc), tempfile.TemporaryDirectory() as d:
+                p = os.path.join(d, "results.json")
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump(doc, f)
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = ai.main(p)
+                self.assertEqual(rc, 1)
+                self.assertEqual(len(buf.getvalue().splitlines()), 1)
+                self.assertTrue(buf.getvalue().startswith("FAIL:"))
+
+    def test_unreadable_or_invalid_json_is_one_fail_line(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "results.json")
+            for raw in (None, b"{", b"\xff"):
+                if raw is not None:
+                    with open(p, "wb") as f:
+                        f.write(raw)
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = ai.main(p)
+                self.assertEqual(rc, 1)
+                self.assertEqual(len(buf.getvalue().splitlines()), 1)
+                self.assertTrue(buf.getvalue().startswith("FAIL:"))
+
     def test_shipped_sample_matches_the_lab_seed(self):
         # docs/sample-results.json must show what the seeded lab is expected to produce.
         buf = io.StringIO()

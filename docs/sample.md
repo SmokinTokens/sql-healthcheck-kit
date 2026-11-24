@@ -29,7 +29,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 - **MEDIUM** S08 Sysadmin members (non-system) - \(instance\): 4 item(s)
 - **MEDIUM** S09 SQL logins with password policy off - \(instance\): 1 item(s)
 - **MEDIUM** S13 Top missing-index requests - \(instance\): 1 item(s)
-- **MEDIUM** S23 No successful DBCC CHECKDB in 7 days - \(instance\): 3 item(s)
+- **MEDIUM** S23 DBCC CHECKDB overdue or unverifiable (7 days) - \(instance\): 3 item(s)
 - **LOW** D03 Left-prefix overlapping indexes - DemoShop: 2 item(s)
 - **LOW** D04 Untrusted foreign keys / check constraints - DemoShop: 1 item(s)
 - **LOW** D05 Write-only indexes (writes, no reads since startup) - DemoShop: 2 item(s)
@@ -135,7 +135,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 
 **Fix:** Review each request against existing indexes; add only the top few after testing. Do not add all of them.
 
-### S23 [MEDIUM] No successful DBCC CHECKDB in 7 days (Integrity, \(instance\))
+### S23 [MEDIUM] DBCC CHECKDB overdue or unverifiable (7 days) (Integrity, \(instance\))
 
 | database | last_good_checkdb |
 |---|---|
