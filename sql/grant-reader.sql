@@ -31,5 +31,12 @@ GRANT VIEW ANY DEFINITION TO hc_reader;     -- catalog metadata (indexes, constr
 GRANT CONNECT ANY DATABASE TO hc_reader;    -- connect to each database for its catalog views
 -- EXEC (...) not sp_executesql: on a Latin1_General_100_BIN2 server, SQL Server 2022 on
 -- Linux fails every sp_executesql call with Msg 17750 (seen in lab, CU28).
-EXEC (N'USE msdb; CREATE USER hc_reader FOR LOGIN hc_reader; GRANT SELECT ON dbo.backupset TO hc_reader;'); -- backup history only
+-- msdb: backup history, plus SQL Agent job names, history outcome and schedules (S24, S25).
+-- Column-level SELECT only: never sysjobhistory.message (step output) or sysjobs.owner_sid.
+-- Not SQLAgentReaderRole: its members are also SQLAgentUserRole and can create and run jobs.
+EXEC (N'USE msdb; CREATE USER hc_reader FOR LOGIN hc_reader; GRANT SELECT ON dbo.backupset TO hc_reader;
+GRANT SELECT (job_id, name, enabled) ON dbo.sysjobs TO hc_reader;
+GRANT SELECT (instance_id, job_id, step_id, run_status, run_date, run_time) ON dbo.sysjobhistory TO hc_reader;
+GRANT SELECT (job_id, schedule_id) ON dbo.sysjobschedules TO hc_reader;
+GRANT SELECT (schedule_id, enabled) ON dbo.sysschedules TO hc_reader;');
 GO

@@ -42,6 +42,8 @@ IMPACT = {
     "S22": "SQL Server has logged read errors on these database pages, which may mean storage damage and possible data loss; run DBCC CHECKDB and confirm you have good backups.",
     "S23": "These databases show no successful DBCC CHECKDB in the last 7 days, so damage could go unnoticed until it is also in the backups; schedule a regular integrity check.",
     "S21": "These files have averaged slow disk reads or writes since startup, which may make the application feel slow when it must go to disk; measure again under normal load.",
+    "S24": "These SQL Agent jobs recorded a failed run in the last 7 days; if any of them does backups, integrity checks or data loads, that work may not have happened, so read each job's history to see what failed.",
+    "S25": "These enabled SQL Agent jobs have no enabled schedule, so they run only when something else starts them; if any is meant to run on a timetable, it may have silently stopped.",
     "D01": "Large tables without a clustered index may get slower to read and may waste disk space as rows change, unless they are staging tables by design.",
     "D02": "These indexes share the same key columns and may be duplicates, which may add avoidable work to every write and extra disk space until their full definitions are reviewed.",
     "D03": "These indexes may overlap, which may add write work and disk use that one index could cover; review their full definitions and usage before changing any.",
