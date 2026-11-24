@@ -198,7 +198,7 @@ What is different here:
 | | This kit | First Responder Kit |
 |---|---|---|
 | Install on the server | Nothing. Queries are sent from the client | Stored procedures, usually in `master` |
-| Checks | 21 single `SELECT` checks | Hundreds of checks across several procedures |
+| Checks | 23 single `SELECT` checks | Hundreds of checks across several procedures |
 | Login | Least-privilege reader; refuses to run as sysadmin or any write-capable login | Not restricted; some checks need high rights (e.g. trace-flag checks via `DBCC TRACESTATUS`) |
 | Output | One Markdown report, one self-contained HTML report, and JSON | Result sets in SSMS, optional output tables |
 | Query text | Literals redacted by default | Full query text and plans |
