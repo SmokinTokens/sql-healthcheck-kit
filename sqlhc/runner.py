@@ -15,6 +15,7 @@ import sys
 
 from .checks import DB_CHECKS, DB_PRIV_PROBE, PRIV_PROBE, PROBE_SYSTEM_DBS, SERVER_CHECKS, TOO_POWERFUL
 from .redact import redact
+from .summary import IMPACT, top_findings
 
 SEP = "\x1f"
 SEV_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
@@ -289,6 +290,28 @@ def render_markdown(data, title="SQL Server Health Check"):
                  "emptied each time they close, so performance sections are blind for them.")
     if data["skipped_dbs"]:
         L.append(f"- Skipped {len(data['skipped_dbs'])} database(s) with unusual names.")
+    L += ["", "## Executive summary", ""]
+    top = top_findings(findings)
+    incomplete = bool(errors or data["skipped_dbs"])
+    if not top and incomplete:
+        L.append("No findings from the checks that completed, but the assessment is INCOMPLETE: "
+                 "do not treat this as a clean result.")
+    elif not top:
+        L.append("No findings. Nothing in this run needs action; see the context sections below.")
+    else:
+        L.append(f"Top {len(top)} risk(s), most serious first (data loss before security, "
+                 "then configuration, then speed):")
+        L.append("")
+        for i, (chk, where, rows) in enumerate(top, 1):
+            places = sum(1 for f in findings if f[0]["id"] == chk["id"])
+            scope = esc(where) if places == 1 else f"{places} places"
+            L.append(f"{i}. **{chk['title']}** ({chk['area']}, {chk['severity']}, {scope}): {IMPACT[chk['id']]}")
+    if errors:
+        L += ["", f"Note: {len(errors)} check(s) could not run, so this summary may miss risks. "
+                  "See Check errors at the end."]
+    if data["skipped_dbs"]:
+        L += ["", f"Note: {len(data['skipped_dbs'])} database(s) were skipped and not checked, "
+                  "so this summary may miss risks in them."]
     L += ["", "## Summary", "", f"**{counts['high']} high, {counts['medium']} medium, {counts['low']} low** findings.", ""]
     for chk, where, rows in findings:
         L.append(f"- **{chk['severity'].upper()}** {chk['id']} {chk['title']} - {esc(where)}: {len(rows)} item(s)")

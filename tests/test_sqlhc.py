@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlhc.checks import DB_CHECKS, DB_PRIV_PROBE, PRIV_PROBE, SERVER_CHECKS  # noqa: E402
 from sqlhc.redact import redact  # noqa: E402
+from sqlhc.summary import AREA_RANK, IMPACT, top_findings  # noqa: E402
 from sqlhc.runner import GuardError, collect, esc, findings_of, guard, md_table, render_markdown, rows_of  # noqa: E402
 
 ALL = SERVER_CHECKS + DB_CHECKS + [PRIV_PROBE, DB_PRIV_PROBE]
@@ -156,6 +157,103 @@ class ReportTests(unittest.TestCase):
         self.assertIn("AUTO_CLOSE is ON for Shop", md)
         self.assertIn("uptime is 12 h", md)
         self.assertIn("literals redacted", md)
+
+    def test_every_check_has_one_impact_line(self):
+        ids = {c["id"] for c in SERVER_CHECKS + DB_CHECKS}
+        self.assertEqual(set(IMPACT), ids)
+        self.assertEqual(len(IMPACT), 21)
+        for cid, text in IMPACT.items():
+            self.assertTrue(text.endswith("."), cid)
+            self.assertNotIn("\n", text, cid)
+            self.assertEqual(text.count(". "), 0, cid)    # one sentence
+            self.assertLessEqual(len(text), 220, cid)
+        for c in SERVER_CHECKS + DB_CHECKS:
+            self.assertIn(c["area"], AREA_RANK, c["id"])
+
+    def test_area_rank_order(self):
+        order = sorted(AREA_RANK, key=lambda a: AREA_RANK[a])
+        self.assertEqual(order[:4], ["Recoverability", "Security", "Configuration", "Performance"])
+
+    def test_exec_summary_ranks_area_before_severity(self):
+        md, _, _ = render_markdown(self.fake())
+        head = md.split("## Executive summary", 1)[1].split("## Summary", 1)[0]
+        lines = [x for x in head.splitlines() if x[:2] in ("1.", "2.", "3.")]
+        self.assertEqual(len(lines), 3)
+        # Security (low) outranks Configuration (high), which outranks Schema (medium).
+        self.assertIn("'sa' login enabled", lines[0])
+        self.assertIn("Risky database options", lines[1])
+        self.assertIn("Large heaps", lines[2])
+        self.assertIn(IMPACT["S10"], lines[0])
+        self.assertLess(md.index("## Executive summary"), md.index("## Summary"))
+
+    def test_exec_summary_dedupes_and_caps_at_three(self):
+        data = self.fake()
+        data["results"]["server"]["S02"] = {"rows": [["master", "SIMPLE", "NEVER"]]}
+        data["dbs"].append("Shop2")
+        db2 = {c["id"]: {"rows": []} for c in DB_CHECKS}
+        db2["D01"] = {"rows": [["dbo.X", "20000"]]}
+        data["results"]["db"]["Shop2"] = db2
+        top = top_findings(findings_of(data))
+        self.assertEqual([f[0]["id"] for f in top], ["S02", "S10", "S04"])
+        self.assertEqual([f[0]["id"] for f in top_findings(findings_of(data), n=5)],
+                         ["S02", "S10", "S04", "D01"])
+        md, _, _ = render_markdown(data)
+        self.assertIn("1. **Databases without a recent full backup (7 days)** (Recoverability, high", md)
+
+    def test_exec_summary_counts_places_for_repeated_check(self):
+        data = self.fake()
+        data["results"]["server"]["S10"] = {"rows": []}
+        data["results"]["server"]["S04"] = {"rows": []}
+        data["dbs"].append("Shop2")
+        db2 = {c["id"]: {"rows": []} for c in DB_CHECKS}
+        db2["D01"] = {"rows": [["dbo.X", "20000"]]}
+        data["results"]["db"]["Shop2"] = db2
+        md, _, _ = render_markdown(data)
+        self.assertIn("(Schema, medium, 2 places)", md)
+
+    def test_exec_summary_with_no_findings_and_errors(self):
+        data = self.fake()
+        for cid in ("S04", "S10"):
+            data["results"]["server"][cid] = {"rows": []}
+        data["results"]["db"]["Shop"]["D01"] = {"rows": [], "error": "denied"}
+        md, _, errors = render_markdown(data)
+        self.assertEqual(len(errors), 1)
+        self.assertNotIn("Nothing in this run needs action", md)
+        self.assertIn("assessment is INCOMPLETE", md)
+        self.assertIn("1 check(s) could not run, so this summary may miss risks", md)
+
+    def test_exec_summary_skipped_dbs_is_not_clean(self):
+        data = self.fake()
+        for cid in ("S04", "S10"):
+            data["results"]["server"][cid] = {"rows": []}
+        data["results"]["db"]["Shop"]["D01"] = {"rows": []}
+        data["skipped_dbs"] = ["we\nird"]
+        md, _, errors = render_markdown(data)
+        self.assertEqual(errors, [])
+        self.assertNotIn("Nothing in this run needs action", md)
+        self.assertIn("assessment is INCOMPLETE", md)
+        self.assertIn("1 database(s) were skipped and not checked", md)
+
+    def test_exec_summary_backup_texts_do_not_quantify_loss(self):
+        for cid in ("S02", "S03"):
+            self.assertIn("For the listed databases", IMPACT[cid])
+            self.assertNotIn("week or more", IMPACT[cid])
+
+    def test_exec_summary_clean_run(self):
+        data = self.fake()
+        for cid in ("S04", "S10"):
+            data["results"]["server"][cid] = {"rows": []}
+        data["results"]["db"]["Shop"]["D01"] = {"rows": []}
+        md, _, errors = render_markdown(data)
+        self.assertEqual(errors, [])
+        self.assertIn("No findings. Nothing in this run needs action", md)
+        self.assertNotIn("INCOMPLETE", md)
+        self.assertNotIn("could not run", md)
+
+    def test_exec_summary_escapes_place_name(self):
+        md, _, _ = render_markdown(self._with_db("<b>x</b>"))
+        head = md.split("## Executive summary", 1)[1].split("## Summary", 1)[0]
+        self.assertNotIn("<b>", head)
 
     def test_rows_of_splits_on_unit_separator(self):
         self.assertEqual(rows_of("a\x1fb\n\nc\n", 2), [["a", "b"]])
