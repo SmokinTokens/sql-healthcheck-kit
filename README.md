@@ -171,7 +171,7 @@ If docker needs sudo, keep the password variables across it:
 Result on SQL Server 2022 (16.0) before S22/S23 existed: 3 high, 7 medium, 5 low findings.
 The S22/S23 lab run on 2026-11-24 confirmed that `hc_reader` could read both sources
 and find the planted defects: a suspect page and DemoShop, model and msdb without a
-CHECKDB. The run summary (`SUMMARY-az1425.txt`) recorded `lab_exit=0`, no containers
+CHECKDB. The lab run summary recorded `lab_exit=0`, no containers
 left, and passing read-only negative controls. This confirms S22/S23; it is not a
 lab verification of the later S24/S25 checks or a fresh finding-count baseline.
 All planted defects are found except AUTO_CLOSE: the lab workload turns AUTO_CLOSE off on purpose, so the DMV-based
