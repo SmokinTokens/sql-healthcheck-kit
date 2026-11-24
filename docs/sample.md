@@ -6,6 +6,14 @@
 - Query text: literals redacted (strings, numbers, hex replaced with ?).
 - NOTE: uptime is 0 h (< 7 days). Wait, index-usage and query stats reset at restart, so performance sections may be incomplete.
 
+## Executive summary
+
+Top 3 risk(s), most serious first (data loss before security, then configuration, then speed):
+
+1. **Databases without a recent full backup (7 days)** (Recoverability, high, \(instance\)): If a disk fails or data is deleted today, the newest copy you can restore is more than a week old, or there is none.
+2. **FULL recovery databases without log backups (24 h)** (Recoverability, high, \(instance\)): Without regular log backups you can only restore to the last full backup, so a failure can lose up to a day or more of work, and the log file keeps growing until the disk fills.
+3. **Sysadmin members (non-system)** (Security, medium, \(instance\)): Every extra sysadmin can read, change or delete any data on the server, so one stolen password or mistake can affect the whole business.
+
 ## Summary
 
 **3 high, 7 medium, 5 low** findings.
