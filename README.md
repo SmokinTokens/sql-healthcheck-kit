@@ -89,8 +89,9 @@ can still be fine, and the table keeps at most 1,000 rows, so treat a row as a r
 `DBCC CHECKDB` now, not as proof of damage. S23 reads
 [`DATABASEPROPERTYEX(name, 'LastGoodCheckDbTime')`](https://learn.microsoft.com/sql/t-sql/functions/databasepropertyex-transact-sql)
 for each online database except tempdb and snapshots. `NEVER` means the server returned
-1900-01-01 (no successful CHECKDB on record). `UNKNOWN` means it returned NULL: the property
-needs SQL Server 2016 SP2, 2017 CU9, 2019 or later. In an availability group the date is the
+1900-01-01 (no successful CHECKDB on record). `UNKNOWN` means it returned NULL, so the date
+could not be read; one cause is a server older than SQL Server 2016 SP2 / 2017 CU9, which
+lack the property. In an availability group the date is the
 last good CHECKDB on the primary replica.
 
 ## Quick start
@@ -146,8 +147,11 @@ docker rm -f sqlhc-lab                     # clean up
 If docker needs sudo, keep the password variables across it:
 `DOCKER="sudo --preserve-env=MSSQL_SA_PASSWORD,SQLCMDPASSWORD,HC_PW docker" bash lab/run-lab.sh`.
 
-Result on SQL Server 2022 (16.0): 3 high, 7 medium, 5 low findings. All planted defects are
-found except AUTO_CLOSE: the lab workload turns AUTO_CLOSE off on purpose, so the DMV-based
+Result on SQL Server 2022 (16.0) before S22/S23 existed: 3 high, 7 medium, 5 low findings.
+The seed now also plants a suspect page and leaves DemoShop, model and msdb without a
+CHECKDB, so expect one more high (S22) and one more medium (S23): 4 high, 8 medium, 5 low
+(expected, not yet confirmed by a lab run).
+All planted defects are found except AUTO_CLOSE: the lab workload turns AUTO_CLOSE off on purpose, so the DMV-based
 sections have data to show. See [docs/sample.md](docs/sample.md) and
 [docs/sample.html](docs/sample.html) (demo data only; CPU, RAM and run time are
 placeholders). Rebuild both from `docs/sample-results.json` with `python3 docs/make-samples.py`.

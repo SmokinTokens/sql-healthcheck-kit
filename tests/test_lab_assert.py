@@ -48,6 +48,13 @@ class AssertIntegrityTests(unittest.TestCase):
         self.assertEqual(self.run_on(dict(GOOD, S23={"rows": [["master", "NEVER"], ["DemoShop", "NEVER"]]}))[0], 1)
         self.assertEqual(self.run_on(dict(GOOD, S23={"rows": [["DemoShop", "UNKNOWN"]]}))[0], 1)
 
+    def test_shipped_sample_matches_the_lab_seed(self):
+        # docs/sample-results.json must show what the seeded lab is expected to produce.
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = ai.main(os.path.join(ROOT, "docs", "sample-results.json"))
+        self.assertEqual(rc, 0, buf.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

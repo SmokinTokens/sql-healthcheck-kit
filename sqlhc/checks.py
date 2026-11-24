@@ -229,8 +229,9 @@ WHERE d.name <> 'tempdb' AND d.state = 0 AND d.source_database_id IS NULL
         "cols": ["database", "last_good_checkdb"], "severity": "medium",
         "fix": "Schedule DBCC CHECKDB at least weekly for every database, system databases included "
                "(for example Ola Hallengren's DatabaseIntegrityCheck), and alert on failure. Run it "
-               "off-peak: it uses tempdb and I/O. UNKNOWN means the server is older than "
-               "SQL Server 2016 SP2 / 2017 CU9 and cannot report the date.",
+               "off-peak: it uses tempdb and I/O. UNKNOWN means the date could not be read "
+               "(the property returned NULL); a server older than SQL Server 2016 SP2 / 2017 CU9 "
+               "is one cause. Check the date there with a DBA login.",
     },
 ]
 

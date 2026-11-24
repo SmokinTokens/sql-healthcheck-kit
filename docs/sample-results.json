@@ -299,14 +299,19 @@
     "rows": []
    },
    "S22": {
-    "rows": []
+    "rows": [
+     [
+      "DemoShop",
+      "1",
+      "312",
+      "bad checksum",
+      "3",
+      "2026-01-15 08:58:00"
+     ]
+    ]
    },
    "S23": {
     "rows": [
-     [
-      "master",
-      "NEVER"
-     ],
      [
       "model",
       "NEVER"
