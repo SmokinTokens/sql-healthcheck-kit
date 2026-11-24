@@ -82,6 +82,24 @@ class AssertIntegrityTests(unittest.TestCase):
                 self.assertEqual(len(buf.getvalue().splitlines()), 1)
                 self.assertTrue(buf.getvalue().startswith("FAIL:"))
 
+    def test_deeply_nested_json_is_one_fail_line(self):
+        import subprocess
+        import sys
+
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "results.json")
+            # Construct valid JSON without using the recursive JSON encoder.
+            depth = 1000000
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("[" * depth + "0" + "]" * depth)
+            result = subprocess.run(
+                [sys.executable, os.path.join(ROOT, "lab", "assert-integrity.py"), p],
+                capture_output=True, text=True, timeout=10,
+            )
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "FAIL: cannot read results JSON\n")
+        self.assertEqual(result.stderr, "")
+
     def test_shipped_sample_matches_the_lab_seed(self):
         # docs/sample-results.json must show what the seeded lab is expected to produce.
         buf = io.StringIO()
