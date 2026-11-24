@@ -446,7 +446,7 @@ class IoLatencyTests(unittest.TestCase):
 
 
 class CorruptionCheckTests(unittest.TestCase):
-    """S22 suspect pages + S23 last good CHECKDB (AZ-1425). Offline proof only."""
+    """S22 suspect pages + S23 last good CHECKDB. Offline proof only."""
     S22 = next(c for c in SERVER_CHECKS if c["id"] == "S22")
     S23 = next(c for c in SERVER_CHECKS if c["id"] == "S23")
 
@@ -478,7 +478,7 @@ class CorruptionCheckTests(unittest.TestCase):
         self.assertIn("d.name <> 'tempdb' AND d.state = 0 AND d.source_database_id IS NULL", sql)
 
     def test_exact_case_identifiers_for_bin2_servers(self):
-        # AZ-1407: catalog names resolve case-sensitively on CS/BIN2 servers.
+        # Catalog names resolve case-sensitively on CS/BIN2 servers.
         self.assertIn("msdb.dbo.suspect_pages", self.S22["sql"])
         for col in ("database_id", "file_id", "page_id", "event_type", "error_count", "last_update_date"):
             self.assertIn("sp." + col, self.S22["sql"])
@@ -513,7 +513,7 @@ class CorruptionCheckTests(unittest.TestCase):
         md, counts, _ = render_markdown(data)
         self.assertEqual(counts, {"high": 1, "medium": 1, "low": 0})
         self.assertIn("S22 [HIGH] Suspect pages", md)
-        self.assertIn("S23 [MEDIUM] No successful DBCC CHECKDB", md)
+        self.assertIn("S23 [MEDIUM] DBCC CHECKDB overdue or unverifiable", md)
 
     def test_compare_keys(self):
         from sqlhc.compare import CAPPED, KEY_COLS
@@ -526,7 +526,7 @@ class CorruptionCheckTests(unittest.TestCase):
 
 
 class AgentJobTests(unittest.TestCase):
-    """S24/S25 (AZ-1426): SQL Agent jobs from msdb, column-level SELECT only.
+    """S24/S25: SQL Agent jobs from msdb, column-level SELECT only.
     The reader gets no SQLAgentReaderRole: its members are also SQLAgentUserRole
     (which P02 refuses) and can create and run their own jobs."""
     S24 = next(c for c in SERVER_CHECKS if c["id"] == "S24")
@@ -550,6 +550,9 @@ class AgentJobTests(unittest.TestCase):
             self.assertEqual(c["severity"], sev)
             self.assertTrue(c["fix"])
             self.assertEqual(len(c["cols"]), n)
+
+    def test_last_failed_timestamp_is_run_start(self):
+        self.assertEqual(self.S24["cols"][-1], "last_failed_run_start")
 
     def test_reads_only_the_four_agent_tables(self):
         for c in (self.S24, self.S25):
@@ -694,12 +697,12 @@ class GrantReaderScriptTests(unittest.TestCase):
         for g in ("GRANT VIEW SERVER STATE TO hc_reader", "GRANT VIEW ANY DEFINITION TO hc_reader",
                   "GRANT CONNECT ANY DATABASE TO hc_reader", "GRANT SELECT ON dbo.backupset TO hc_reader"):
             self.assertIn(g, self.code)
-        # 4 base grants + 4 column-level msdb Agent grants (AZ-1426, see AgentJobTests).
+        # 4 base grants + 4 column-level msdb Agent grants (see AgentJobTests).
         self.assertEqual(self.code.count("GRANT "), 8)
         self.assertEqual(self.code.count("GRANT SELECT ("), 4)
 
     def test_no_sp_executesql_for_bin2_servers(self):
-        # AZ-1407: SQL Server 2022 (Linux, CU28) with server collation Latin1_General_100_BIN2
+        # SQL Server 2022 (Linux, CU28) with server collation Latin1_General_100_BIN2
         # fails every sp_executesql call with Msg 17750; EXEC (N'...') works there.
         self.assertNotIn("sp_executesql", self.code.lower())
         self.assertIn("EXEC (N'USE msdb; CREATE USER hc_reader FOR LOGIN hc_reader;", self.code)
@@ -710,7 +713,7 @@ class GrantReaderScriptTests(unittest.TestCase):
 
 
 class CaseSensitiveCollationTests(unittest.TestCase):
-    """AZ-1407: buyers run on CS/BIN2 servers (Latin1_General_CS_AS, *_BIN2).
+    """Buyers run on CS/BIN2 servers (Latin1_General_CS_AS, *_BIN2).
     There, catalog names and identifiers resolve case-sensitively, and string
     comparisons follow the column collation. Offline proof only; lab run pending."""
     QUOTED = re.compile(r"N?'(?:[^']|'')*'")

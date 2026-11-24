@@ -56,7 +56,7 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 | S13 | Top missing-index requests | medium |
 | S21 | Slow file I/O: average read or write latency >= 20 ms since startup (files with >= 1000 I/Os) | medium |
 | S22 | Suspect pages (823/824 errors, bad checksum, torn page) in `msdb.dbo.suspect_pages` | high |
-| S23 | No successful `DBCC CHECKDB` in 7 days, or never | medium |
+| S23 | `DBCC CHECKDB` overdue or unverifiable (7 days) | medium |
 | S24 | SQL Agent jobs with a failed run in the last 7 days (top 20) | medium |
 | D01 | Large heaps | medium |
 | D02 | Duplicate indexes | medium |
@@ -86,8 +86,9 @@ so this is what a finding looks like (illustrative values, not lab output):
 
 S22 and S23 look for corruption without running `DBCC`. S22 reads
 [`msdb.dbo.suspect_pages`](https://learn.microsoft.com/sql/relational-databases/system-tables/suspect-pages-transact-sql):
-one row per page that failed with a minor 823 or an 824 error. It shows open rows only
-(event types 1-3) and skips pages already restored, repaired or deallocated. A listed page
+one row per page that failed with a minor 823 or an 824 error. S22 shows the 20 most
+recent open rows (event types 1-3), ordered by last update, and skips pages already
+restored, repaired or deallocated. A listed page
 can still be fine, and the table keeps at most 1,000 rows, so treat a row as a reason to run
 `DBCC CHECKDB` now, not as proof of damage. S23 reads
 [`DATABASEPROPERTYEX(name, 'LastGoodCheckDbTime')`](https://learn.microsoft.com/sql/t-sql/functions/databasepropertyex-transact-sql)
@@ -104,7 +105,10 @@ column-level `SELECT` on those tables only, not `SQLAgentReaderRole`: members of
 are also members of `SQLAgentUserRole` and can create and run their own jobs
 ([SQL Server Agent fixed database roles](https://learn.microsoft.com/ssms/agent/sql-server-agent-fixed-database-roles)).
 The report never reads the history `message` column (job step output can hold paths or data)
-or the job owner. Times are the server's local time. SQL Server Agent keeps 1,000 history rows
+or the job owner. Times are the server's local time. S24 covers 7 server-local calendar
+days back from the current time of day, not exactly 168 hours across daylight-saving
+changes. `last_failed_run_start` is the start time of the latest failed run, not its
+completion time. SQL Server Agent keeps 1,000 history rows
 in total and 100 per job by default
 ([Job automation with SQL Agent jobs](https://learn.microsoft.com/azure/azure-sql/managed-instance/job-automation-managed-instance#job-history)),
 so on a busy server an empty S24 can mean the failures were already purged. S25 does not
@@ -165,9 +169,11 @@ If docker needs sudo, keep the password variables across it:
 `DOCKER="sudo --preserve-env=MSSQL_SA_PASSWORD,SQLCMDPASSWORD,HC_PW docker" bash lab/run-lab.sh`.
 
 Result on SQL Server 2022 (16.0) before S22/S23 existed: 3 high, 7 medium, 5 low findings.
-The seed now also plants a suspect page and leaves DemoShop, model and msdb without a
-CHECKDB, so expect one more high (S22) and one more medium (S23): 4 high, 8 medium, 5 low
-(expected, not yet confirmed by a lab run).
+The S22/S23 lab run on 2026-11-24 confirmed that `hc_reader` could read both sources
+and find the planted defects: a suspect page and DemoShop, model and msdb without a
+CHECKDB. The run summary (`SUMMARY-az1425.txt`) recorded `lab_exit=0`, no containers
+left, and passing read-only negative controls. This confirms S22/S23; it is not a
+lab verification of the later S24/S25 checks or a fresh finding-count baseline.
 All planted defects are found except AUTO_CLOSE: the lab workload turns AUTO_CLOSE off on purpose, so the DMV-based
 sections have data to show. See [docs/sample.md](docs/sample.md) and
 [docs/sample.html](docs/sample.html) (demo data only; CPU, RAM and run time are

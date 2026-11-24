@@ -221,7 +221,7 @@ ORDER BY sp.last_update_date DESC""",
         # 1900-01-01 = never; NULL = invalid input (the property needs SQL Server 2016 SP2,
         # 2017 CU9, 2019 or later). On an AG database it reports the primary's CHECKDB.
         # https://learn.microsoft.com/sql/t-sql/functions/databasepropertyex-transact-sql
-        "id": "S23", "title": "No successful DBCC CHECKDB in 7 days", "area": "Integrity",
+        "id": "S23", "title": "DBCC CHECKDB overdue or unverifiable (7 days)", "area": "Integrity",
         "sql": """SELECT d.name,
  CASE WHEN x.t IS NULL THEN 'UNKNOWN' WHEN x.t < '19000102' THEN 'NEVER'
       ELSE CONVERT(varchar(19), x.t, 120) END
@@ -238,8 +238,9 @@ WHERE d.name <> 'tempdb' AND d.state = 0 AND d.source_database_id IS NULL
     },
     {
         # SQL Agent job outcome rows (step_id 0) with run_status 0 = Failed, started in the
-        # last 7 x 24 h (run_date is yyyyMMdd, run_time HHmmss, server local time; the
-        # run_date-only term is a coarse prefilter, the packed date+time term is exact). Reads only the
+        # last 7 server-local calendar days at the current time of day, not exactly 168 hours
+        # across daylight-saving changes (run_date yyyyMMdd, run_time HHmmss = run start).
+        # The run_date-only term is a coarse prefilter; packed date+time preserves seconds. Reads only the
         # columns granted in sql/grant-reader.sql: never sysjobhistory.message (step output
         # can hold paths or data) or sysjobs.owner_sid. COUNT(col), not COUNT(*): the reader
         # holds column-level SELECT only. Agent keeps 1,000 history rows in total and 100 per
@@ -262,7 +263,7 @@ SELECT TOP (20) j.name, CASE j.enabled WHEN 1 THEN 'enabled' ELSE 'disabled' END
    CONVERT(datetime, CONVERT(char(8), f.last_run / 1000000), 112)), 120)
 FROM f JOIN msdb.dbo.sysjobs j ON j.job_id = f.job_id
 ORDER BY f.last_run DESC""",
-        "cols": ["job", "job_state", "failed_runs_7d", "last_failure"], "severity": "medium",
+        "cols": ["job", "job_state", "failed_runs_7d", "last_failed_run_start"], "severity": "medium",
         "fix": "Open each job's history (SSMS: SQL Server Agent > Jobs > right-click > View History) and "
                "read the failing step's message; this report leaves messages out on purpose because they "
                "can hold paths or data. Fix the cause, then add a failure notification (operator plus "
