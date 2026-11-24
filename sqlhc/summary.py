@@ -1,4 +1,4 @@
-"""Plain-English executive summary: the top findings, ranked by business risk.
+"""Plain-English executive summary: category-prioritized findings, not measured risk.
 
 Ranking is by area first, then severity, then check id:
 Recoverability > Security > Configuration > Performance > Schema > Inventory.

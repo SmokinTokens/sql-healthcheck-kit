@@ -43,6 +43,12 @@ footer{color:var(--mute);margin-top:32px;font-size:13px}
 <li>Query text: literals redacted (strings, numbers, hex replaced with ?).</li>
 </ul>
 <p class="note">NOTE: uptime is 0 h (&lt; 7 days). Wait, index-usage and query stats reset at restart, so performance sections may be incomplete.</p>
+<h2>Executive summary</h2>
+<p>Top 3 category-prioritized findings (data loss before security, then configuration, then speed):</p><ol>
+<li><b>Databases without a recent full backup (7 days)</b> (Recoverability, high, (instance)): For the listed databases, this server&#x27;s backup history shows no full backup in the last 7 days, so a disk failure or mistake could lose data unless backups are kept another way; confirm coverage with a test restore.</li>
+<li><b>FULL recovery databases without log backups (24 h)</b> (Recoverability, high, (instance)): For the listed databases, this server&#x27;s backup history shows no log backup in the last 24 hours, so a failure could lose recent work and the log file may keep growing; confirm actual backup coverage.</li>
+<li><b>Sysadmin members (non-system)</b> (Security, medium, (instance)): Each enabled sysadmin login can read, change or delete any data on the server, so one stolen password or mistake on any of them can affect the whole business.</li>
+</ol>
 <h2>Summary</h2><div class="tiles">
 <div class="tile high"><b>3</b>high</div>
 <div class="tile medium"><b>7</b>medium</div>

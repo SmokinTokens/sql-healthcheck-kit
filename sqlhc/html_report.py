@@ -105,6 +105,31 @@ def render_html(data, title="SQL Server Health Check"):
     if data["skipped_dbs"]:
         P.append(f'<p class="note">Skipped {len(data["skipped_dbs"])} database(s) with unusual names.</p>')
 
+    from .summary import IMPACT, top_findings
+
+    P.append("<h2>Executive summary</h2>")
+    top = top_findings(findings)
+    if top:
+        P.append(f"<p>Top {len(top)} category-prioritized findings (data loss before security, "
+                 "then configuration, then speed):</p><ol>")
+        for chk, where, rows in top:
+            places = sum(1 for f in findings if f[0]["id"] == chk["id"])
+            scope = where if places == 1 else f"{places} places"
+            P.append(f"<li><b>{h(chk['title'])}</b> ({h(chk['area'])}, {h(chk['severity'])}, "
+                     f"{h(scope)}): {h(IMPACT[chk['id']])}</li>")
+        P.append("</ol>")
+    elif errors or data["skipped_dbs"]:
+        P.append("<p>No findings from the checks that completed, but the assessment is INCOMPLETE: "
+                 "do not treat this as a clean result.</p>")
+    else:
+        P.append("<p>No findings. Nothing in this run needs action; see the context sections below.</p>")
+    if errors:
+        P.append(f"<p>Note: {len(errors)} check(s) could not run, so this summary may miss risks. "
+                 "See Check errors at the end.</p>")
+    if data["skipped_dbs"]:
+        P.append(f"<p>Note: {len(data['skipped_dbs'])} database(s) were skipped and not checked, "
+                 "so this summary may miss risks in them.</p>")
+
     P.append("<h2>Summary</h2><div class=\"tiles\">")
     for s in ("high", "medium", "low"):
         P.append(f'<div class="tile {s}"><b>{counts[s]}</b>{s}</div>')
