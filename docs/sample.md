@@ -1,6 +1,6 @@
 # SQL Server Health Check (sample, demo data)
 
-- Run: 2026-01-15T09:00:00, 2.3 s, 15 instance checks + 6 per-database checks over 1 user database(s).
+- Run: 2026-01-15T09:00:00, 2.3 s, 17 instance checks + 6 per-database checks over 1 user database(s).
 - Server: SQL Server 16.0.4305.5 RTM, Developer Edition \(64\-bit\), 4 CPUs, 16384 MB RAM, up 0 h.
 - Access: catalog views and DMVs only, sent as SELECT statements. No user table rows read; no data or settings changed.
 - Query text: literals redacted (strings, numbers, hex replaced with ?).
@@ -12,15 +12,16 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 
 1. **Databases without a recent full backup (7 days)** (Recoverability, high, \(instance\)): For the listed databases, this server's backup history shows no full backup in the last 7 days, so a disk failure or mistake could lose data unless backups are kept another way; confirm coverage with a test restore.
 2. **FULL recovery databases without log backups (24 h)** (Recoverability, high, \(instance\)): For the listed databases, this server's backup history shows no log backup in the last 24 hours, so a failure could lose recent work and the log file may keep growing; confirm actual backup coverage.
-3. **Sysadmin members (non-system)** (Security, medium, \(instance\)): Each enabled sysadmin login can read, change or delete any data on the server, so one stolen password or mistake on any of them can affect the whole business.
+3. **Suspect pages (823/824 errors) in msdb.dbo.suspect_pages** (Integrity, high, \(instance\)): SQL Server has logged read errors on these database pages, which may mean storage damage and possible data loss; run DBCC CHECKDB and confirm you have good backups.
 
 ## Summary
 
-**3 high, 7 medium, 5 low** findings.
+**4 high, 8 medium, 5 low** findings.
 
 - **HIGH** S02 Databases without a recent full backup (7 days) - \(instance\): 3 item(s)
 - **HIGH** S03 FULL recovery databases without log backups (24 h) - \(instance\): 1 item(s)
 - **HIGH** S04 Risky database options - \(instance\): 1 item(s)
+- **HIGH** S22 Suspect pages (823/824 errors) in msdb.dbo.suspect_pages - \(instance\): 1 item(s)
 - **MEDIUM** D01 Large heaps (tables without a clustered index) - DemoShop: 1 item(s)
 - **MEDIUM** D02 Duplicate indexes (same key columns) - DemoShop: 1 item(s)
 - **MEDIUM** S05 Old compatibility level - \(instance\): 1 item(s)
@@ -28,6 +29,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 - **MEDIUM** S08 Sysadmin members (non-system) - \(instance\): 4 item(s)
 - **MEDIUM** S09 SQL logins with password policy off - \(instance\): 1 item(s)
 - **MEDIUM** S13 Top missing-index requests - \(instance\): 1 item(s)
+- **MEDIUM** S23 No successful DBCC CHECKDB in 7 days - \(instance\): 3 item(s)
 - **LOW** D03 Left-prefix overlapping indexes - DemoShop: 2 item(s)
 - **LOW** D04 Untrusted foreign keys / check constraints - DemoShop: 1 item(s)
 - **LOW** D05 Write-only indexes (writes, no reads since startup) - DemoShop: 2 item(s)
@@ -61,6 +63,14 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 | DemoShop | AUTO\_SHRINK ON; PAGE\_VERIFY NONE; |
 
 **Fix:** Set AUTO_SHRINK OFF, AUTO_CLOSE OFF and PAGE_VERIFY CHECKSUM. Set TRUSTWORTHY OFF unless an application feature needs it (for example cross-database Service Broker). Use a change window.
+
+### S22 [HIGH] Suspect pages (823/824 errors) in msdb.dbo.suspect_pages (Integrity, \(instance\))
+
+| database | file_id | page_id | error | count | last_seen |
+|---|---|---|---|---|---|
+| DemoShop | 1 | 312 | bad checksum | 3 | 2026\-01\-15 08:58:00 |
+
+**Fix:** Treat as possible corruption: run DBCC CHECKDB WITH NO_INFOMSGS, ALL_ERRORMSGS on that database now (as a DBA, in a quiet window), check the storage for errors, and plan a page or full restore from a clean backup. A page can be listed and still be fine. Rows stay in the table after a fix (msdb keeps up to 1,000); a DBA clears old rows.
 
 ### D01 [MEDIUM] Large heaps (tables without a clustered index) (Schema, DemoShop)
 
@@ -124,6 +134,16 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 | DemoShop | \[DemoShop\].\[dbo\].\[Orders\] | \[Status\] | \[OrderDate\] | \[Total\] | 3655.7 |
 
 **Fix:** Review each request against existing indexes; add only the top few after testing. Do not add all of them.
+
+### S23 [MEDIUM] No successful DBCC CHECKDB in 7 days (Integrity, \(instance\))
+
+| database | last_good_checkdb |
+|---|---|
+| model | NEVER |
+| msdb | NEVER |
+| DemoShop | NEVER |
+
+**Fix:** Schedule DBCC CHECKDB at least weekly for every database, system databases included (for example Ola Hallengren's DatabaseIntegrityCheck), and alert on failure. Run it off-peak: it uses tempdb and I/O. UNKNOWN means the date could not be read (the property returned NULL); a server older than SQL Server 2016 SP2 / 2017 CU9 is one cause. Check the date there with a DBA login.
 
 ### D03 [LOW] Left-prefix overlapping indexes (Schema, DemoShop)
 

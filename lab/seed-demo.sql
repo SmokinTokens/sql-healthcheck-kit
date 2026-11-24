@@ -1,5 +1,5 @@
 -- LAB ONLY. Never run this on a real server.
--- Builds a throwaway demo database (DemoShop) with 11 planted defects, so you
+-- Builds a throwaway demo database (DemoShop) with 13 planted defects, so you
 -- can see what the health check finds. Run it as sa on a disposable container.
 -- No password is stored here: the demo app login gets a random password that
 -- is generated inside SQL Server and never printed.
@@ -48,4 +48,12 @@ BEGIN
   EXEC (@s);  -- not sp_executesql: it fails with Msg 17750 on BIN2 servers (2022 Linux)
 END
 ALTER SERVER ROLE sysadmin ADD MEMBER legacy_app;
+GO
+-- defect: a suspect page (S22). A fake bad-checksum row, inserted by sa (msdb db_owner
+-- may insert here); no page is really damaged. And a clean CHECKDB on master only, so
+-- S23 lists DemoShop, model and msdb as NEVER but not master.
+IF NOT EXISTS (SELECT 1 FROM msdb.dbo.suspect_pages WHERE database_id = DB_ID('DemoShop') AND file_id = 1 AND page_id = 312)
+  INSERT msdb.dbo.suspect_pages (database_id, file_id, page_id, event_type, error_count, last_update_date)
+  VALUES (DB_ID('DemoShop'), 1, 312, 2, 3, GETDATE());
+DBCC CHECKDB (master) WITH NO_INFOMSGS;
 GO

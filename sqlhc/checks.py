@@ -1,10 +1,11 @@
 """Read-only SQL Server health-check queries.
 
-Every query is a SELECT over catalog views, DMVs or msdb.dbo.backupset.
-No DBCC, no xp_/sp_ calls, no writes, no reads of user table rows.
+Every query is a SELECT over catalog views, DMVs, msdb.dbo.backupset or
+msdb.dbo.suspect_pages. No DBCC, no xp_/sp_ calls, no writes, no reads of user table rows.
 Designed for a least-privilege login (see sql/grant-reader.sql):
 VIEW SERVER STATE + VIEW ANY DEFINITION + CONNECT ANY DATABASE
-+ SELECT on msdb.dbo.backupset.
++ SELECT on msdb.dbo.backupset. msdb.dbo.suspect_pages is readable by anyone with
+access to msdb (Microsoft Learn), so it needs no extra grant.
 
 SERVER_CHECKS run once in master; DB_CHECKS run in each user database.
 PRIV_PROBE (server) and DB_PRIV_PROBE (each database) run first; see runner.collect.
@@ -192,6 +193,45 @@ ORDER BY vfs.io_stall_read_ms + vfs.io_stall_write_ms DESC""",
                "sys.dm_io_virtual_file_stats a few minutes apart under normal load and compare. "
                "If still slow, check the storage path (disk queue, SAN/VM host, antivirus scanning "
                "data files) and the queries driving the I/O (S12 PAGEIOLATCH/WRITELOG waits, S14).",
+    },
+    {
+        # msdb.dbo.suspect_pages: one row per page that failed with a minor 823 or an 824
+        # error (max 1,000 rows). event_type 1/2/3 = 823-824 error / bad checksum / torn page;
+        # 4/5/7 = restored / repaired / deallocated, so those are left out.
+        # https://learn.microsoft.com/sql/relational-databases/system-tables/suspect-pages-transact-sql
+        "id": "S22", "title": "Suspect pages (823/824 errors) in msdb.dbo.suspect_pages", "area": "Integrity",
+        "sql": """SELECT TOP (20) ISNULL(DB_NAME(sp.database_id), CAST(sp.database_id AS varchar(10))),
+ sp.file_id, sp.page_id,
+ CASE sp.event_type WHEN 1 THEN '823/824 error' WHEN 2 THEN 'bad checksum' ELSE 'torn page' END,
+ sp.error_count, CONVERT(varchar(19), sp.last_update_date, 120)
+FROM msdb.dbo.suspect_pages sp
+WHERE sp.event_type IN (1, 2, 3)
+ORDER BY sp.last_update_date DESC""",
+        "cols": ["database", "file_id", "page_id", "error", "count", "last_seen"], "severity": "high",
+        "fix": "Treat as possible corruption: run DBCC CHECKDB WITH NO_INFOMSGS, ALL_ERRORMSGS on that "
+               "database now (as a DBA, in a quiet window), check the storage for errors, and plan a "
+               "page or full restore from a clean backup. A page can be listed and still be fine. "
+               "Rows stay in the table after a fix (msdb keeps up to 1,000); a DBA clears old rows.",
+    },
+    {
+        # DATABASEPROPERTYEX(name, 'LastGoodCheckDbTime'): last successful DBCC CHECKDB;
+        # 1900-01-01 = never; NULL = invalid input (the property needs SQL Server 2016 SP2,
+        # 2017 CU9, 2019 or later). On an AG database it reports the primary's CHECKDB.
+        # https://learn.microsoft.com/sql/t-sql/functions/databasepropertyex-transact-sql
+        "id": "S23", "title": "No successful DBCC CHECKDB in 7 days", "area": "Integrity",
+        "sql": """SELECT d.name,
+ CASE WHEN x.t IS NULL THEN 'UNKNOWN' WHEN x.t < '19000102' THEN 'NEVER'
+      ELSE CONVERT(varchar(19), x.t, 120) END
+FROM sys.databases d
+CROSS APPLY (SELECT CAST(DATABASEPROPERTYEX(d.name, 'LastGoodCheckDbTime') AS datetime) AS t) x
+WHERE d.name <> 'tempdb' AND d.state = 0 AND d.source_database_id IS NULL
+  AND (x.t IS NULL OR x.t < DATEADD(day, -7, GETDATE()))""",
+        "cols": ["database", "last_good_checkdb"], "severity": "medium",
+        "fix": "Schedule DBCC CHECKDB at least weekly for every database, system databases included "
+               "(for example Ola Hallengren's DatabaseIntegrityCheck), and alert on failure. Run it "
+               "off-peak: it uses tempdb and I/O. UNKNOWN means the date could not be read "
+               "(the property returned NULL); a server older than SQL Server 2016 SP2 / 2017 CU9 "
+               "is one cause. Check the date there with a DBA login.",
     },
 ]
 
