@@ -11,7 +11,7 @@ def main(path):
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         print("FAIL: cannot read results JSON")
         return 1
     if not isinstance(data, dict) or not isinstance(data.get("results"), dict):
