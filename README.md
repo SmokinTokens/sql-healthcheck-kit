@@ -6,8 +6,9 @@ JSON of backup gaps, risky settings, security issues and schema problems, each w
 plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) and
 [docs/sample.html](docs/sample.html).
 
-- **Read-only by design.** Every check is a single `SELECT` over catalog views, DMVs and
-  `msdb.dbo.backupset` / `msdb.dbo.suspect_pages`. No `DBCC`, no `xp_`/`sp_` calls, no writes, and no user table rows.
+- **Read-only by design.** Every check is a single `SELECT` over catalog views, DMVs,
+  `msdb.dbo.backupset`, `msdb.dbo.suspect_pages` and named columns of the msdb SQL Agent
+  job tables. No `DBCC`, no `xp_`/`sp_` calls, no writes, and no user table rows.
 - **Three layers of safety.**
   1. Server-enforced (the real boundary): run it as the least-privilege login from
      `sql/grant-reader.sql`. That login cannot read user table rows, change data or change
@@ -56,11 +57,13 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 | S21 | Slow file I/O: average read or write latency >= 20 ms since startup (files with >= 1000 I/Os) | medium |
 | S22 | Suspect pages (823/824 errors, bad checksum, torn page) in `msdb.dbo.suspect_pages` | high |
 | S23 | No successful `DBCC CHECKDB` in 7 days, or never | medium |
+| S24 | SQL Agent jobs with a failed run in the last 7 days (top 20) | medium |
 | D01 | Large heaps | medium |
 | D02 | Duplicate indexes | medium |
 | S06 | Percent-based file growth | low |
 | S10 | `sa` login enabled | low |
 | S11 | tempdb data files vs CPUs | low |
+| S25 | Enabled SQL Agent jobs with no enabled schedule (top 50) | low |
 | D03 | Left-prefix overlapping indexes | low |
 | D04 | Untrusted foreign keys / check constraints | low |
 | D05 | Write-only indexes | low |
@@ -93,6 +96,20 @@ for each online database except tempdb and snapshots. `NEVER` means the server r
 could not be read; one cause is a server older than SQL Server 2016 SP2 / 2017 CU9, which
 lack the property. In an availability group the date is the
 last good CHECKDB on the primary replica.
+
+S24 and S25 read `msdb.dbo.sysjobs`, `sysjobhistory`, `sysjobschedules` and `sysschedules`
+([sysjobhistory](https://learn.microsoft.com/sql/relational-databases/system-tables/dbo-sysjobhistory-transact-sql):
+`step_id` 0 is the job outcome, `run_status` 0 is Failed). The reader login gets
+column-level `SELECT` on those tables only, not `SQLAgentReaderRole`: members of that role
+are also members of `SQLAgentUserRole` and can create and run their own jobs
+([SQL Server Agent fixed database roles](https://learn.microsoft.com/ssms/agent/sql-server-agent-fixed-database-roles)).
+The report never reads the history `message` column (job step output can hold paths or data)
+or the job owner. Times are the server's local time. SQL Server Agent keeps 1,000 history rows
+in total and 100 per job by default
+([Job automation with SQL Agent jobs](https://learn.microsoft.com/azure/azure-sql/managed-instance/job-automation-managed-instance#job-history)),
+so on a busy server an empty S24 can mean the failures were already purged. S25 does not
+detect a schedule that is enabled but already ended. Express edition has no Agent: both
+checks then return nothing.
 
 ## Quick start
 
@@ -171,13 +188,15 @@ that errored, malformed rows, or a database missing from one run (or an unreadab
 list) are unknown: an error is never shown as a fix. S13 and S21 return only a top 10 / top 15;
 an item that drops out of a full list is unknown, because it may only have been ranked out.
 Checks that use counters since startup (S13, D05, S21) reset at restart, so a "fixed" there can
-mean only that the counters were cleared. The tool reads two files; it never connects to a server.
+mean only that the counters were cleared. S24 never shows **fixed**: a failed job that drops out
+is **unknown**, because it may only have left the 7-day window or been purged from Agent
+history. Check the job's next runs instead. The tool reads two files; it never connects to a server.
 
 ## What it does not check (yet)
 
 VLF counts, last good CHECKDB on servers older than SQL Server 2016 SP2 (S23 shows
-`UNKNOWN` there; the old way needs `DBCC DBINFO`), SQL Agent job failures
-(needs `msdb.dbo.sysjobhistory`), I/O latency over a short window (S21 shows averages
+`UNKNOWN` there; the old way needs `DBCC DBINFO`), SQL Agent failure messages (left out
+on purpose), I/O latency over a short window (S21 shows averages
 since startup only; a two-snapshot delta needs `WAITFOR`, which the guard refuses).
 Pull requests welcome, as long as every new check stays a single read-only `SELECT`.
 
@@ -198,7 +217,7 @@ What is different here:
 | | This kit | First Responder Kit |
 |---|---|---|
 | Install on the server | Nothing. Queries are sent from the client | Stored procedures, usually in `master` |
-| Checks | 23 single `SELECT` checks | Hundreds of checks across several procedures |
+| Checks | 25 single `SELECT` checks | Hundreds of checks across several procedures |
 | Login | Least-privilege reader; refuses to run as sysadmin or any write-capable login | Not restricted; some checks need high rights (e.g. trace-flag checks via `DBCC TRACESTATUS`) |
 | Output | One Markdown report, one self-contained HTML report, and JSON | Result sets in SSMS, optional output tables |
 | Query text | Literals redacted by default | Full query text and plans |

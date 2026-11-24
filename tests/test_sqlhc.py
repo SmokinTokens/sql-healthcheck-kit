@@ -161,7 +161,7 @@ class ReportTests(unittest.TestCase):
     def test_every_check_has_one_impact_line(self):
         ids = {c["id"] for c in SERVER_CHECKS + DB_CHECKS}
         self.assertEqual(set(IMPACT), ids)
-        self.assertEqual(len(IMPACT), 23)
+        self.assertEqual(len(IMPACT), 25)
         for cid, text in IMPACT.items():
             self.assertTrue(text.endswith("."), cid)
             self.assertNotIn("\n", text, cid)
@@ -525,6 +525,141 @@ class CorruptionCheckTests(unittest.TestCase):
             self.assertTrue(set(KEY_COLS[cid]) <= set(chk["cols"]))
 
 
+class AgentJobTests(unittest.TestCase):
+    """S24/S25 (AZ-1426): SQL Agent jobs from msdb, column-level SELECT only.
+    The reader gets no SQLAgentReaderRole: its members are also SQLAgentUserRole
+    (which P02 refuses) and can create and run their own jobs."""
+    S24 = next(c for c in SERVER_CHECKS if c["id"] == "S24")
+    S25 = next(c for c in SERVER_CHECKS if c["id"] == "S25")
+    GRANTED = {
+        "sysjobs": {"job_id", "name", "enabled"},
+        "sysjobhistory": {"instance_id", "job_id", "step_id", "run_status", "run_date", "run_time"},
+        "sysjobschedules": {"job_id", "schedule_id"},
+        "sysschedules": {"schedule_id", "enabled"},
+    }
+    ALIAS = {"h": "sysjobhistory", "j": "sysjobs", "js": "sysjobschedules", "s": "sysschedules"}
+
+    def setUp(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "sql", "grant-reader.sql"), encoding="utf-8") as f:
+            self.grant = "\n".join(line.split("--", 1)[0] for line in f.read().splitlines())
+
+    def test_shape_and_guard(self):
+        for c, sev, n in ((self.S24, "medium", 4), (self.S25, "low", 1)):
+            guard(c["sql"])
+            self.assertEqual(c["severity"], sev)
+            self.assertTrue(c["fix"])
+            self.assertEqual(len(c["cols"]), n)
+
+    def test_reads_only_the_four_agent_tables(self):
+        for c in (self.S24, self.S25):
+            objs = set(re.findall(r"\bmsdb\.dbo\.(\w+)", c["sql"]))
+            self.assertTrue(objs <= set(self.GRANTED), (c["id"], objs))
+            self.assertNotRegex(c["sql"], r"\bsys\.")
+
+    def test_every_column_is_granted(self):
+        # Column-level SELECT: any other column (owner_sid, message, ...) fails with Msg 230.
+        for c in (self.S24, self.S25):
+            for alias, col in re.findall(r"\b(h|j|js|s)\.(\w+)", c["sql"]):
+                self.assertIn(col, self.GRANTED[self.ALIAS[alias]], f"{c['id']}: {alias}.{col}")
+            for bad in ("message", "owner_sid", "step_name", "server", "command"):
+                self.assertNotRegex(c["sql"], rf"\b{bad}\b", f"{c['id']} reads {bad}")
+
+    def test_no_star_reads(self):
+        for c in (self.S24, self.S25):
+            self.assertNotRegex(c["sql"], r"SELECT\s+\*|COUNT\(\s*\*\s*\)|\w\.\*")
+
+    def test_s24_counts_failed_job_outcomes_in_7_days(self):
+        sql = self.S24["sql"]
+        self.assertIn("h.step_id = 0 AND h.run_status = 0", sql)
+        self.assertIn("DATEADD(day, -7, GETDATE())", sql)
+        self.assertIn("TOP (20)", sql)
+
+    def test_s25_needs_an_enabled_schedule(self):
+        sql = self.S25["sql"]
+        self.assertIn("j.enabled = 1 AND NOT EXISTS", sql)
+        self.assertIn("s.enabled = 1", sql)
+
+    def test_grant_script_matches_columns_read(self):
+        for table, cols in self.GRANTED.items():
+            m = re.search(rf"GRANT SELECT \(([^)]*)\) ON dbo\.{table} TO hc_reader", self.grant)
+            self.assertIsNotNone(m, table)
+            assert m is not None
+            self.assertEqual({x.strip() for x in m.group(1).split(",")}, cols, table)
+        for role in ("SQLAgentReaderRole", "SQLAgentUserRole", "SQLAgentOperatorRole", "sp_addrolemember",
+                     "ALTER ROLE"):
+            self.assertNotIn(role.lower(), self.grant.lower())
+
+    def test_p02_does_not_count_select_grants_as_write(self):
+        # The new grants are SELECT (type 'SL'); P02 flags only write/exec/alter types.
+        self.assertIn("p.type IN ('IN', 'UP', 'DL', 'EX', 'AL', 'CL', 'TO', 'IM')", DB_PRIV_PROBE["sql"])
+        self.assertNotIn("'SL'", DB_PRIV_PROBE["sql"])
+
+    def test_lab_shaped_output_parses_and_renders(self):
+        out = "nightly-etl\x1fenabled\x1f3\x1f2026-11-23 02:00:00\n\n(1 rows affected)\n"
+        d = [0]
+        rows = rows_of(out, len(self.S24["cols"]), d)
+        self.assertEqual(d[0], 0)
+        self.assertEqual(rows, [["nightly-etl", "enabled", "3", "2026-11-23 02:00:00"]])
+        server = {c["id"]: {"rows": []} for c in SERVER_CHECKS}
+        server["S01"] = {"rows": [["16.0.1", "RTM", "Developer", "4", "8000", "300"]]}
+        server["S24"] = {"rows": rows}
+        server["S25"] = {"rows": [["orphan job"]]}
+        data = {"started": "2026-01-01T00:00:00", "secs": 1.0, "probe": {}, "powerful": [],
+                "dbs": [], "skipped_dbs": [], "results": {"server": server, "db": {}},
+                "full_query_text": False}
+        self.assertEqual([f[0]["id"] for f in findings_of(data)], ["S24", "S25"])
+        md, counts, _ = render_markdown(data)
+        self.assertEqual(counts, {"high": 0, "medium": 1, "low": 1})
+        self.assertIn("S24 [MEDIUM] SQL Agent jobs that failed", md)
+        self.assertIn("nightly\\-etl", md)  # Markdown-escaped job name
+
+    def test_compare_keys_by_job_and_caps(self):
+        from sqlhc.compare import CAPPED, KEY_COLS
+        self.assertEqual(KEY_COLS["S24"], ["job"])
+        self.assertEqual(KEY_COLS["S25"], ["job"])
+        self.assertEqual(CAPPED["S24"], 20)
+        self.assertEqual(CAPPED["S25"], 50)
+
+    def test_s24_window_is_rolling_to_the_second(self):
+        # Review r1: a yyyyMMdd-only cutoff kept a failure from 7 days ago at 00:00 when the
+        # check ran at 15:00. The packed date+time term must compare against the full cutoff.
+        sql = self.S24["sql"]
+        self.assertIn("CAST(h.run_date AS bigint) * 1000000 + h.run_time >=", sql)
+        for part in ("hour", "minute", "second"):
+            self.assertIn(f"DATEPART({part}, DATEADD(day, -7, GETDATE()))", sql)
+
+        # Pure-Python mirror of the same packing (offline proof of the arithmetic only;
+        # the SQL itself still needs the lab run).
+        import datetime as dt
+
+        def packed(t):
+            return int(t.strftime("%Y%m%d")) * 1000000 + t.hour * 10000 + t.minute * 100 + t.second
+        now = dt.datetime(2026, 11, 24, 15, 0, 0)
+        cut = packed(now - dt.timedelta(days=7))
+        self.assertLess(packed(dt.datetime(2026, 11, 17, 0, 0, 0)), cut)
+        self.assertLess(packed(dt.datetime(2026, 11, 17, 14, 59, 59)), cut)
+        self.assertGreaterEqual(packed(dt.datetime(2026, 11, 17, 15, 0, 0)), cut)
+        self.assertGreaterEqual(packed(dt.datetime(2026, 11, 18, 0, 0, 0)), cut)
+
+    def test_compare_never_calls_a_vanished_s24_row_fixed(self):
+        from sqlhc.compare import compare
+
+        def run(s24, s25):
+            server = {c["id"]: {"rows": []} for c in SERVER_CHECKS}
+            server["S24"] = {"rows": s24}
+            server["S25"] = {"rows": s25}
+            return {"started": "2026-01-01T00:00:00", "secs": 1.0, "probe": {}, "powerful": [],
+                    "dbs": [], "skipped_dbs": [], "results": {"server": server, "db": {}},
+                    "full_query_text": False}
+        before = run([["nightly-etl", "enabled", "3", "2026-11-23 02:00:00"]], [["orphan"]])
+        after = run([], [])
+        items = {x["check"]: x for x in compare(before, after)["items"]}
+        self.assertEqual(items["S24"]["status"], "unknown")
+        self.assertIn("7-day window", items["S24"]["reason"])
+        self.assertEqual(items["S25"]["status"], "fixed")
+
+
 class GrantReaderScriptTests(unittest.TestCase):
     """sql/grant-reader.sql must refuse a pre-existing hc_reader before it grants anything."""
 
@@ -559,7 +694,9 @@ class GrantReaderScriptTests(unittest.TestCase):
         for g in ("GRANT VIEW SERVER STATE TO hc_reader", "GRANT VIEW ANY DEFINITION TO hc_reader",
                   "GRANT CONNECT ANY DATABASE TO hc_reader", "GRANT SELECT ON dbo.backupset TO hc_reader"):
             self.assertIn(g, self.code)
-        self.assertEqual(self.code.count("GRANT "), 4)
+        # 4 base grants + 4 column-level msdb Agent grants (AZ-1426, see AgentJobTests).
+        self.assertEqual(self.code.count("GRANT "), 8)
+        self.assertEqual(self.code.count("GRANT SELECT ("), 4)
 
     def test_no_sp_executesql_for_bin2_servers(self):
         # AZ-1407: SQL Server 2022 (Linux, CU28) with server collation Latin1_General_100_BIN2

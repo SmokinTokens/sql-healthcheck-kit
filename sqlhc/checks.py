@@ -1,11 +1,14 @@
 """Read-only SQL Server health-check queries.
 
-Every query is a SELECT over catalog views, DMVs, msdb.dbo.backupset or
-msdb.dbo.suspect_pages. No DBCC, no xp_/sp_ calls, no writes, no reads of user table rows.
+Every query is a SELECT over catalog views, DMVs, msdb.dbo.backupset,
+msdb.dbo.suspect_pages or the msdb SQL Agent job tables (granted columns only).
+No DBCC, no xp_/sp_ calls, no writes, no reads of user table rows.
 Designed for a least-privilege login (see sql/grant-reader.sql):
 VIEW SERVER STATE + VIEW ANY DEFINITION + CONNECT ANY DATABASE
-+ SELECT on msdb.dbo.backupset. msdb.dbo.suspect_pages is readable by anyone with
-access to msdb (Microsoft Learn), so it needs no extra grant.
++ SELECT on msdb.dbo.backupset + column-level SELECT on msdb sysjobs,
+sysjobhistory, sysjobschedules and sysschedules (no SQLAgentReaderRole).
+msdb.dbo.suspect_pages is readable by anyone with access to msdb (Microsoft Learn),
+so it needs no extra grant.
 
 SERVER_CHECKS run once in master; DB_CHECKS run in each user database.
 PRIV_PROBE (server) and DB_PRIV_PROBE (each database) run first; see runner.collect.
@@ -232,6 +235,56 @@ WHERE d.name <> 'tempdb' AND d.state = 0 AND d.source_database_id IS NULL
                "off-peak: it uses tempdb and I/O. UNKNOWN means the date could not be read "
                "(the property returned NULL); a server older than SQL Server 2016 SP2 / 2017 CU9 "
                "is one cause. Check the date there with a DBA login.",
+    },
+    {
+        # SQL Agent job outcome rows (step_id 0) with run_status 0 = Failed, started in the
+        # last 7 x 24 h (run_date is yyyyMMdd, run_time HHmmss, server local time; the
+        # run_date-only term is a coarse prefilter, the packed date+time term is exact). Reads only the
+        # columns granted in sql/grant-reader.sql: never sysjobhistory.message (step output
+        # can hold paths or data) or sysjobs.owner_sid. COUNT(col), not COUNT(*): the reader
+        # holds column-level SELECT only. Agent keeps 1,000 history rows in total and 100 per
+        # job by default, so older failures may already be purged.
+        "id": "S24", "title": "SQL Agent jobs that failed in the last 7 days", "area": "Recoverability",
+        "sql": """;WITH f AS (
+ SELECT h.job_id, COUNT(h.instance_id) AS fails,
+  MAX(CAST(h.run_date AS bigint) * 1000000 + h.run_time) AS last_run
+ FROM msdb.dbo.sysjobhistory h
+ WHERE h.step_id = 0 AND h.run_status = 0
+   AND h.run_date >= CAST(CONVERT(char(8), DATEADD(day, -7, GETDATE()), 112) AS int)
+   AND CAST(h.run_date AS bigint) * 1000000 + h.run_time >=
+    CAST(CONVERT(char(8), DATEADD(day, -7, GETDATE()), 112) AS bigint) * 1000000
+    + DATEPART(hour, DATEADD(day, -7, GETDATE())) * 10000
+    + DATEPART(minute, DATEADD(day, -7, GETDATE())) * 100 + DATEPART(second, DATEADD(day, -7, GETDATE()))
+ GROUP BY h.job_id)
+SELECT TOP (20) j.name, CASE j.enabled WHEN 1 THEN 'enabled' ELSE 'disabled' END, f.fails,
+ CONVERT(varchar(19), DATEADD(second, CAST(f.last_run % 100 + (f.last_run / 100 % 100) * 60
+   + (f.last_run / 10000 % 100) * 3600 AS int),
+   CONVERT(datetime, CONVERT(char(8), f.last_run / 1000000), 112)), 120)
+FROM f JOIN msdb.dbo.sysjobs j ON j.job_id = f.job_id
+ORDER BY f.last_run DESC""",
+        "cols": ["job", "job_state", "failed_runs_7d", "last_failure"], "severity": "medium",
+        "fix": "Open each job's history (SSMS: SQL Server Agent > Jobs > right-click > View History) and "
+               "read the failing step's message; this report leaves messages out on purpose because they "
+               "can hold paths or data. Fix the cause, then add a failure notification (operator plus "
+               "Database Mail) so the next failure is not silent. Agent keeps 1,000 history rows (100 per "
+               "job) by default, so an empty result can also mean the history was already purged.",
+    },
+    {
+        # Enabled jobs with no enabled schedule never run on their own. Some are on purpose
+        # (started by an alert, another job or an application), so this is low severity.
+        "id": "S25", "title": "Enabled SQL Agent jobs with no enabled schedule", "area": "Configuration",
+        "sql": """SELECT TOP (50) j.name
+FROM msdb.dbo.sysjobs j
+WHERE j.enabled = 1 AND NOT EXISTS (
+ SELECT js.schedule_id FROM msdb.dbo.sysjobschedules js
+ JOIN msdb.dbo.sysschedules s ON s.schedule_id = js.schedule_id
+ WHERE js.job_id = j.job_id AND s.enabled = 1)
+ORDER BY j.name""",
+        "cols": ["job"], "severity": "low",
+        "fix": "Check that each job is meant to start only on demand (from an alert, another job or an "
+               "application). If it should run on a timetable, attach or enable a schedule; if it is no "
+               "longer used, disable it. A schedule that is enabled but already ended (one-time or past "
+               "its end date) is not detected here.",
     },
 ]
 

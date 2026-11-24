@@ -1,6 +1,6 @@
 # SQL Server Health Check (sample, demo data)
 
-- Run: 2026-01-15T09:00:00, 2.3 s, 17 instance checks + 6 per-database checks over 1 user database(s).
+- Run: 2026-01-15T09:00:00, 2.3 s, 19 instance checks + 6 per-database checks over 1 user database(s).
 - Server: SQL Server 16.0.4305.5 RTM, Developer Edition \(64\-bit\), 4 CPUs, 16384 MB RAM, up 0 h.
 - Access: catalog views and DMVs only, sent as SELECT statements. No user table rows read; no data or settings changed.
 - Query text: literals redacted (strings, numbers, hex replaced with ?).
