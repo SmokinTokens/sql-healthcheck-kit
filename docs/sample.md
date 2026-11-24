@@ -1,6 +1,6 @@
 # SQL Server Health Check (sample, demo data)
 
-- Run: 2026-01-15T09:00:00, 2.3 s, 15 instance checks + 6 per-database checks over 1 user database(s).
+- Run: 2026-01-15T09:00:00, 2.3 s, 17 instance checks + 6 per-database checks over 1 user database(s).
 - Server: SQL Server 16.0.4305.5 RTM, Developer Edition \(64\-bit\), 4 CPUs, 16384 MB RAM, up 0 h.
 - Access: catalog views and DMVs only, sent as SELECT statements. No user table rows read; no data or settings changed.
 - Query text: literals redacted (strings, numbers, hex replaced with ?).
@@ -16,7 +16,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 
 ## Summary
 
-**3 high, 7 medium, 5 low** findings.
+**3 high, 8 medium, 5 low** findings.
 
 - **HIGH** S02 Databases without a recent full backup (7 days) - \(instance\): 3 item(s)
 - **HIGH** S03 FULL recovery databases without log backups (24 h) - \(instance\): 1 item(s)
@@ -28,6 +28,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 - **MEDIUM** S08 Sysadmin members (non-system) - \(instance\): 4 item(s)
 - **MEDIUM** S09 SQL logins with password policy off - \(instance\): 1 item(s)
 - **MEDIUM** S13 Top missing-index requests - \(instance\): 1 item(s)
+- **MEDIUM** S23 No successful DBCC CHECKDB in 7 days - \(instance\): 4 item(s)
 - **LOW** D03 Left-prefix overlapping indexes - DemoShop: 2 item(s)
 - **LOW** D04 Untrusted foreign keys / check constraints - DemoShop: 1 item(s)
 - **LOW** D05 Write-only indexes (writes, no reads since startup) - DemoShop: 2 item(s)
@@ -124,6 +125,17 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 | DemoShop | \[DemoShop\].\[dbo\].\[Orders\] | \[Status\] | \[OrderDate\] | \[Total\] | 3655.7 |
 
 **Fix:** Review each request against existing indexes; add only the top few after testing. Do not add all of them.
+
+### S23 [MEDIUM] No successful DBCC CHECKDB in 7 days (Integrity, \(instance\))
+
+| database | last_good_checkdb |
+|---|---|
+| master | NEVER |
+| model | NEVER |
+| msdb | NEVER |
+| DemoShop | NEVER |
+
+**Fix:** Schedule DBCC CHECKDB at least weekly for every database, system databases included (for example Ola Hallengren's DatabaseIntegrityCheck), and alert on failure. Run it off-peak: it uses tempdb and I/O. UNKNOWN means the server is older than SQL Server 2016 SP2 / 2017 CU9 and cannot report the date.
 
 ### D03 [LOW] Left-prefix overlapping indexes (Schema, DemoShop)
 

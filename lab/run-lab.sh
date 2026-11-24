@@ -69,3 +69,6 @@ done
 
 python3 -m sqlhc --server localhost --user hc_reader --trust-cert \
   --sqlcmd "$SQLCMD" --docker "$NAME" --docker-cmd "$DOCKER" --out "$OUT"
+
+# Proof 3: the reader login can read both corruption sources (S22, S23).
+python3 "$HERE/assert-integrity.py" "$OUT/results.json"

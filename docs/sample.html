@@ -37,7 +37,7 @@ footer{color:var(--mute);margin-top:32px;font-size:13px}
 </style></head><body><main>
 <h1>SQL Server Health Check (sample, demo data)</h1>
 <ul class="meta">
-<li>Run: 2026-01-15T09:00:00, 2.3 s, 15 instance checks + 6 per-database checks over 1 user database(s).</li>
+<li>Run: 2026-01-15T09:00:00, 2.3 s, 17 instance checks + 6 per-database checks over 1 user database(s).</li>
 <li>Server: SQL Server 16.0.4305.5 RTM, Developer Edition (64-bit), 4 CPUs, 16384 MB RAM, up 0 h.</li>
 <li>Access: catalog views and DMVs only, sent as SELECT statements. No user table rows read; no data or settings changed.</li>
 <li>Query text: literals redacted (strings, numbers, hex replaced with ?).</li>
@@ -51,7 +51,7 @@ footer{color:var(--mute);margin-top:32px;font-size:13px}
 </ol>
 <h2>Summary</h2><div class="tiles">
 <div class="tile high"><b>3</b>high</div>
-<div class="tile medium"><b>7</b>medium</div>
+<div class="tile medium"><b>8</b>medium</div>
 <div class="tile low"><b>5</b>low</div>
 </div>
 <table class="summary"><thead><tr><th>Severity</th><th>ID</th><th>Check</th><th>Where</th><th>Items</th></tr></thead><tbody>
@@ -65,6 +65,7 @@ footer{color:var(--mute);margin-top:32px;font-size:13px}
 <tr><td><span class="sev medium">MEDIUM</span></td><td>S08</td><td>Sysadmin members (non-system)</td><td>(instance)</td><td>4</td></tr>
 <tr><td><span class="sev medium">MEDIUM</span></td><td>S09</td><td>SQL logins with password policy off</td><td>(instance)</td><td>1</td></tr>
 <tr><td><span class="sev medium">MEDIUM</span></td><td>S13</td><td>Top missing-index requests</td><td>(instance)</td><td>1</td></tr>
+<tr><td><span class="sev medium">MEDIUM</span></td><td>S23</td><td>No successful DBCC CHECKDB in 7 days</td><td>(instance)</td><td>4</td></tr>
 <tr><td><span class="sev low">LOW</span></td><td>D03</td><td>Left-prefix overlapping indexes</td><td>DemoShop</td><td>2</td></tr>
 <tr><td><span class="sev low">LOW</span></td><td>D04</td><td>Untrusted foreign keys / check constraints</td><td>DemoShop</td><td>1</td></tr>
 <tr><td><span class="sev low">LOW</span></td><td>D05</td><td>Write-only indexes (writes, no reads since startup)</td><td>DemoShop</td><td>2</td></tr>
@@ -82,6 +83,7 @@ footer{color:var(--mute);margin-top:32px;font-size:13px}
 <section class="card medium"><h3><span class="sev medium">MEDIUM</span>S08 Sysadmin members (non-system) <span class="where">(Security, (instance))</span></h3><table><thead><tr><th>login</th><th>type</th><th>state</th></tr></thead><tbody><tr><td>sa</td><td>SQL_LOGIN</td><td>enabled</td></tr><tr><td>BUILTIN\Administrators</td><td>WINDOWS_GROUP</td><td>enabled</td></tr><tr><td>NT AUTHORITY\NETWORK SERVICE</td><td>WINDOWS_LOGIN</td><td>enabled</td></tr><tr><td>legacy_app</td><td>SQL_LOGIN</td><td>enabled</td></tr></tbody></table><p class="fix"><b>Fix:</b> Keep sysadmin to named admins only. Application logins get database roles, not sysadmin.</p></section>
 <section class="card medium"><h3><span class="sev medium">MEDIUM</span>S09 SQL logins with password policy off <span class="where">(Security, (instance))</span></h3><table><thead><tr><th>login</th><th>policy</th><th>expiry</th><th>state</th></tr></thead><tbody><tr><td>legacy_app</td><td>off</td><td>off</td><td>enabled</td></tr></tbody></table><p class="fix"><b>Fix:</b> Turn CHECK_POLICY ON and rotate the password. This also turns on expiry and lockout, which can break an application login; set CHECK_EXPIRATION to match your password-rotation process.</p></section>
 <section class="card medium"><h3><span class="sev medium">MEDIUM</span>S13 Top missing-index requests <span class="where">(Performance, (instance))</span></h3><table><thead><tr><th>database</th><th>table</th><th>equality</th><th>inequality</th><th>include</th><th>score</th></tr></thead><tbody><tr><td>DemoShop</td><td>[DemoShop].[dbo].[Orders]</td><td>[Status]</td><td>[OrderDate]</td><td>[Total]</td><td>3655.7</td></tr></tbody></table><p class="fix"><b>Fix:</b> Review each request against existing indexes; add only the top few after testing. Do not add all of them.</p></section>
+<section class="card medium"><h3><span class="sev medium">MEDIUM</span>S23 No successful DBCC CHECKDB in 7 days <span class="where">(Integrity, (instance))</span></h3><table><thead><tr><th>database</th><th>last_good_checkdb</th></tr></thead><tbody><tr><td>master</td><td>NEVER</td></tr><tr><td>model</td><td>NEVER</td></tr><tr><td>msdb</td><td>NEVER</td></tr><tr><td>DemoShop</td><td>NEVER</td></tr></tbody></table><p class="fix"><b>Fix:</b> Schedule DBCC CHECKDB at least weekly for every database, system databases included (for example Ola Hallengren&#x27;s DatabaseIntegrityCheck), and alert on failure. Run it off-peak: it uses tempdb and I/O. UNKNOWN means the server is older than SQL Server 2016 SP2 / 2017 CU9 and cannot report the date.</p></section>
 <section class="card low"><h3><span class="sev low">LOW</span>D03 Left-prefix overlapping indexes <span class="where">(Schema, DemoShop)</span></h3><table><thead><tr><th>table</th><th>narrower_index</th><th>covered_by</th></tr></thead><tbody><tr><td>dbo.Orders</td><td>IX_Orders_Cust</td><td>IX_Orders_Cust_Date</td></tr><tr><td>dbo.Orders</td><td>IX_Orders_Cust_Dup</td><td>IX_Orders_Cust_Date</td></tr></tbody></table><p class="fix"><b>Fix:</b> Potential overlap: the wider index can often serve seeks that use the narrower one, but INCLUDE columns and filters are not compared. Compare the full definitions and usage before dropping.</p></section>
 <section class="card low"><h3><span class="sev low">LOW</span>D04 Untrusted foreign keys / check constraints <span class="where">(Schema, DemoShop)</span></h3><table><thead><tr><th>table</th><th>constraint</th><th>kind</th></tr></thead><tbody><tr><td>dbo.Orders</td><td>FK_Orders_Customers</td><td>FK</td></tr></tbody></table><p class="fix"><b>Fix:</b> Re-validate WITH CHECK CHECK CONSTRAINT in a change window so the optimizer can trust it.</p></section>
 <section class="card low"><h3><span class="sev low">LOW</span>D05 Write-only indexes (writes, no reads since startup) <span class="where">(Schema, DemoShop)</span></h3><table><thead><tr><th>table</th><th>index</th><th>writes</th><th>reads</th></tr></thead><tbody><tr><td>dbo.Orders</td><td>IX_Orders_Cust</td><td>1</td><td>0</td></tr><tr><td>dbo.Orders</td><td>IX_Orders_Cust_Date</td><td>1</td><td>0</td></tr></tbody></table><p class="fix"><b>Fix:</b> Candidates to drop only after a full business cycle of uptime (month-end included).</p></section>

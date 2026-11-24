@@ -445,6 +445,86 @@ class IoLatencyTests(unittest.TestCase):
         self.assertIn("27.3", md)
 
 
+class CorruptionCheckTests(unittest.TestCase):
+    """S22 suspect pages + S23 last good CHECKDB (AZ-1425). Offline proof only."""
+    S22 = next(c for c in SERVER_CHECKS if c["id"] == "S22")
+    S23 = next(c for c in SERVER_CHECKS if c["id"] == "S23")
+
+    def test_shape_and_guard(self):
+        for c, n, sev in ((self.S22, 6, "high"), (self.S23, 2, "medium")):
+            guard(c["sql"])
+            self.assertEqual(c["severity"], sev)
+            self.assertEqual(c["area"], "Integrity")
+            self.assertTrue(c["fix"])
+            self.assertEqual(len(c["cols"]), n)
+
+    def test_s22_reads_only_suspect_pages_and_skips_resolved_rows(self):
+        sql = self.S22["sql"]
+        self.assertEqual(set(re.findall(r"\b(?:msdb\.dbo|sys)\.\w+", sql)), {"msdb.dbo.suspect_pages"})
+        # 1 = 823/824, 2 = bad checksum, 3 = torn page; 4/5/7 = restored/repaired/deallocated.
+        self.assertIn("WHERE sp.event_type IN (1, 2, 3)", sql)
+        self.assertIn("TOP (20)", sql)
+        # Dropped database: show its id, not NULL.
+        self.assertIn("ISNULL(DB_NAME(sp.database_id), CAST(sp.database_id AS varchar(10)))", sql)
+
+    def test_s23_flags_never_unknown_and_older_than_7_days(self):
+        sql = self.S23["sql"]
+        self.assertIn("DATABASEPROPERTYEX(d.name, 'LastGoodCheckDbTime')", sql)
+        # 1900-01-01 means never run; NULL means the server cannot report it.
+        self.assertIn("WHEN x.t IS NULL THEN 'UNKNOWN'", sql)
+        self.assertIn("WHEN x.t < '19000102' THEN 'NEVER'", sql)
+        self.assertIn("x.t IS NULL OR x.t < DATEADD(day, -7, GETDATE())", sql)
+        # Online, not tempdb, not a database snapshot.
+        self.assertIn("d.name <> 'tempdb' AND d.state = 0 AND d.source_database_id IS NULL", sql)
+
+    def test_exact_case_identifiers_for_bin2_servers(self):
+        # AZ-1407: catalog names resolve case-sensitively on CS/BIN2 servers.
+        self.assertIn("msdb.dbo.suspect_pages", self.S22["sql"])
+        for col in ("database_id", "file_id", "page_id", "event_type", "error_count", "last_update_date"):
+            self.assertIn("sp." + col, self.S22["sql"])
+        self.assertIn("'LastGoodCheckDbTime'", self.S23["sql"])
+        self.assertIn("source_database_id", self.S23["sql"])
+
+    def test_cites_microsoft_learn(self):
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sqlhc", "checks.py")
+        with open(path, encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn("learn.microsoft.com/sql/relational-databases/system-tables/suspect-pages-transact-sql", src)
+        self.assertIn("learn.microsoft.com/sql/t-sql/functions/databasepropertyex-transact-sql", src)
+
+    def test_output_parses(self):
+        out = ("DemoShop\x1f1\x1f312\x1fbad checksum\x1f3\x1f2026-11-20 03:14:00\n\n(1 rows affected)\n")
+        d = [0]
+        self.assertEqual(rows_of(out, len(self.S22["cols"]), d),
+                         [["DemoShop", "1", "312", "bad checksum", "3", "2026-11-20 03:14:00"]])
+        out = "master\x1fNEVER\nDemoShop\x1f2026-11-01 02:00:00\n\n(2 rows affected)\n"
+        self.assertEqual(rows_of(out, len(self.S23["cols"]), d)[0], ["master", "NEVER"])
+        self.assertEqual(d[0], 0)
+
+    def test_findings_render_and_count(self):
+        server = {c["id"]: {"rows": []} for c in SERVER_CHECKS}
+        server["S01"] = {"rows": [["16.0.1", "RTM", "Developer", "4", "8000", "300"]]}
+        server["S22"] = {"rows": [["DemoShop", "1", "312", "bad checksum", "3", "2026-11-20 03:14:00"]]}
+        server["S23"] = {"rows": [["master", "NEVER"], ["DemoShop", "UNKNOWN"]]}
+        data = {"started": "2026-01-01T00:00:00", "secs": 1.0, "probe": {}, "powerful": [],
+                "dbs": [], "skipped_dbs": [], "results": {"server": server, "db": {}},
+                "full_query_text": False}
+        self.assertEqual([f[0]["id"] for f in findings_of(data)], ["S22", "S23"])
+        md, counts, _ = render_markdown(data)
+        self.assertEqual(counts, {"high": 1, "medium": 1, "low": 0})
+        self.assertIn("S22 [HIGH] Suspect pages", md)
+        self.assertIn("S23 [MEDIUM] No successful DBCC CHECKDB", md)
+
+    def test_compare_keys(self):
+        from sqlhc.compare import CAPPED, KEY_COLS
+        self.assertEqual(KEY_COLS["S22"], ["database", "file_id", "page_id"])
+        self.assertEqual(KEY_COLS["S23"], ["database"])
+        self.assertEqual(CAPPED["S22"], 20)
+        for cid in ("S22", "S23"):
+            chk = next(c for c in SERVER_CHECKS if c["id"] == cid)
+            self.assertTrue(set(KEY_COLS[cid]) <= set(chk["cols"]))
+
+
 class GrantReaderScriptTests(unittest.TestCase):
     """sql/grant-reader.sql must refuse a pre-existing hc_reader before it grants anything."""
 

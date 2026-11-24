@@ -40,10 +40,11 @@ KEY_COLS = {
     "S10": [], "S11": [], "S13": ["database", "table", "equality", "inequality", "include"],
     "D01": ["table"], "D02": ["table", "index_a", "index_b"], "D03": ["table", "narrower_index", "covered_by"],
     "D04": ["table", "constraint"], "D05": ["table", "index"], "S21": ["database", "file"],
+    "S22": ["database", "file_id", "page_id"], "S23": ["database"],
 }
 # Checks that return only the top N rows. An item missing from a full top-N list may
 # just have been ranked out, so it is unknown, not fixed.
-CAPPED = {"S13": 10, "S21": 15}
+CAPPED = {"S13": 10, "S21": 15, "S22": 20}
 # System databases are not in the 'dbs' list (database_id <= 4), so a run holds no
 # record of their state. master and tempdb cannot be set OFFLINE and the instance does
 # not run without them, so they are always covered. model and msdb have no state

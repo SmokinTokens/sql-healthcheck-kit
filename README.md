@@ -7,7 +7,7 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 [docs/sample.html](docs/sample.html).
 
 - **Read-only by design.** Every check is a single `SELECT` over catalog views, DMVs and
-  `msdb.dbo.backupset`. No `DBCC`, no `xp_`/`sp_` calls, no writes, and no user table rows.
+  `msdb.dbo.backupset` / `msdb.dbo.suspect_pages`. No `DBCC`, no `xp_`/`sp_` calls, no writes, and no user table rows.
 - **Three layers of safety.**
   1. Server-enforced (the real boundary): run it as the least-privilege login from
      `sql/grant-reader.sql`. That login cannot read user table rows, change data or change
@@ -54,6 +54,8 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 | S09 | SQL logins with password policy off | medium |
 | S13 | Top missing-index requests | medium |
 | S21 | Slow file I/O: average read or write latency >= 20 ms since startup (files with >= 1000 I/Os) | medium |
+| S22 | Suspect pages (823/824 errors, bad checksum, torn page) in `msdb.dbo.suspect_pages` | high |
+| S23 | No successful `DBCC CHECKDB` in 7 days, or never | medium |
 | D01 | Large heaps | medium |
 | D02 | Duplicate indexes | medium |
 | S06 | Percent-based file growth | low |
@@ -78,6 +80,18 @@ so this is what a finding looks like (illustrative values, not lab output):
 | database | file | type | reads | avg_read_ms | writes | avg_write_ms |
 |---|---|---|---|---|---|---|
 | Sales | Sales_log | LOG | 12 | 0.4 | 48210 | 27.3 |
+
+S22 and S23 look for corruption without running `DBCC`. S22 reads
+[`msdb.dbo.suspect_pages`](https://learn.microsoft.com/sql/relational-databases/system-tables/suspect-pages-transact-sql):
+one row per page that failed with a minor 823 or an 824 error. It shows open rows only
+(event types 1-3) and skips pages already restored, repaired or deallocated. A listed page
+can still be fine, and the table keeps at most 1,000 rows, so treat a row as a reason to run
+`DBCC CHECKDB` now, not as proof of damage. S23 reads
+[`DATABASEPROPERTYEX(name, 'LastGoodCheckDbTime')`](https://learn.microsoft.com/sql/t-sql/functions/databasepropertyex-transact-sql)
+for each online database except tempdb and snapshots. `NEVER` means the server returned
+1900-01-01 (no successful CHECKDB on record). `UNKNOWN` means it returned NULL: the property
+needs SQL Server 2016 SP2, 2017 CU9, 2019 or later. In an availability group the date is the
+last good CHECKDB on the primary replica.
 
 ## Quick start
 
@@ -115,9 +129,11 @@ Exit code: 0 = ran clean, 1 = one or more checks errored (listed in the report).
 
 ## Try it on a demo database
 
-`lab/run-lab.sh` starts a throwaway SQL Server 2022 container, seeds `DemoShop` with 11
-planted defects, creates the reader login, proves that login is denied writes and row reads,
-proves the tool refuses `sa`, then runs the check. Passwords are random and are never put on
+`lab/run-lab.sh` starts a throwaway SQL Server 2022 container, seeds `DemoShop` with 13
+planted defects (including a fake suspect-page row in msdb; no page is really damaged),
+creates the reader login, proves that login is denied writes and row reads, proves the tool
+refuses `sa`, runs the check, then proves the reader login could read both corruption
+sources (S22, S23) with `lab/assert-integrity.py`. Passwords are random and are never put on
 a command line; the container keeps `MSSQL_SA_PASSWORD` in its config (`docker inspect`)
 until you remove it. Starting the container sets `ACCEPT_EULA=Y`: by running the script you
 accept the Microsoft SQL Server Developer Edition licence.
@@ -155,7 +171,8 @@ mean only that the counters were cleared. The tool reads two files; it never con
 
 ## What it does not check (yet)
 
-VLF counts, last good CHECKDB (needs `DBCC DBINFO`, not read-only), SQL Agent job failures
+VLF counts, last good CHECKDB on servers older than SQL Server 2016 SP2 (S23 shows
+`UNKNOWN` there; the old way needs `DBCC DBINFO`), SQL Agent job failures
 (needs `msdb.dbo.sysjobhistory`), I/O latency over a short window (S21 shows averages
 since startup only; a two-snapshot delta needs `WAITFOR`, which the guard refuses).
 Pull requests welcome, as long as every new check stays a single read-only `SELECT`.
