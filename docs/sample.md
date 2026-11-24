@@ -12,7 +12,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 
 1. **Databases without a recent full backup (7 days)** (Recoverability, high, \(instance\)): For the listed databases, this server's backup history shows no full backup in the last 7 days, so a disk failure or mistake could lose data unless backups are kept another way; confirm coverage with a test restore.
 2. **FULL recovery databases without log backups (24 h)** (Recoverability, high, \(instance\)): For the listed databases, this server's backup history shows no log backup in the last 24 hours, so a failure could lose recent work and the log file may keep growing; confirm actual backup coverage.
-3. **Sysadmin members (non-system)** (Security, medium, \(instance\)): Each enabled sysadmin login can read, change or delete any data on the server, so one stolen password or mistake on any of them can affect the whole business.
+3. **Suspect pages (823/824 errors) in msdb.dbo.suspect_pages** (Integrity, high, \(instance\)): SQL Server has logged read errors on these database pages, which may mean storage damage and possible data loss; run DBCC CHECKDB and confirm you have good backups.
 
 ## Summary
 

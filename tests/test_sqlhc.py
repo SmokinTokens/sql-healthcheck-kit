@@ -161,7 +161,7 @@ class ReportTests(unittest.TestCase):
     def test_every_check_has_one_impact_line(self):
         ids = {c["id"] for c in SERVER_CHECKS + DB_CHECKS}
         self.assertEqual(set(IMPACT), ids)
-        self.assertEqual(len(IMPACT), 21)
+        self.assertEqual(len(IMPACT), 23)
         for cid, text in IMPACT.items():
             self.assertTrue(text.endswith("."), cid)
             self.assertNotIn("\n", text, cid)
@@ -172,7 +172,7 @@ class ReportTests(unittest.TestCase):
 
     def test_area_rank_order(self):
         order = sorted(AREA_RANK, key=lambda a: AREA_RANK[a])
-        self.assertEqual(order[:4], ["Recoverability", "Security", "Configuration", "Performance"])
+        self.assertEqual(order[:5], ["Recoverability", "Integrity", "Security", "Configuration", "Performance"])
 
     def test_exec_summary_ranks_area_before_severity(self):
         md, _, _ = render_markdown(self.fake())

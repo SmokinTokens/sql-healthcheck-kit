@@ -14,6 +14,7 @@ they get a text too, so a later severity change cannot leave a gap.
 
 AREA_RANK = {
     "Recoverability": 0,
+    "Integrity": 0,
     "Security": 1,
     "Configuration": 2,
     "Performance": 3,
@@ -38,6 +39,8 @@ IMPACT = {
     "S12": "This shows where the server spends its waiting time, for context only.",
     "S13": "SQL Server estimates that some queries may run faster with an extra index, which may mean slower screens and reports for users; test before adding any.",
     "S14": "This lists the queries that use the most CPU, for context only.",
+    "S22": "SQL Server has logged read errors on these database pages, which may mean storage damage and possible data loss; run DBCC CHECKDB and confirm you have good backups.",
+    "S23": "These databases show no successful DBCC CHECKDB in the last 7 days, so damage could go unnoticed until it is also in the backups; schedule a regular integrity check.",
     "S21": "These files have averaged slow disk reads or writes since startup, which may make the application feel slow when it must go to disk; measure again under normal load.",
     "D01": "Large tables without a clustered index may get slower to read and may waste disk space as rows change, unless they are staging tables by design.",
     "D02": "These indexes share the same key columns and may be duplicates, which may add avoidable work to every write and extra disk space until their full definitions are reviewed.",
