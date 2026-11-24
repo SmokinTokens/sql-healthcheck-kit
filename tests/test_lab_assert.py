@@ -9,6 +9,7 @@ from contextlib import redirect_stdout
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _spec = importlib.util.spec_from_file_location("assert_integrity", os.path.join(ROOT, "lab", "assert-integrity.py"))
+assert _spec is not None and _spec.loader is not None
 ai = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ai)
 
