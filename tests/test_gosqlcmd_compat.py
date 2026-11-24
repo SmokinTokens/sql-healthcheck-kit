@@ -1,4 +1,4 @@
-"""Offline parse test: rows_of() against go-sqlcmd output (AZ-1369).
+"""Offline parse test: rows_of() against go-sqlcmd output.
 
 No go-sqlcmd binary is installed on the build host, so the sample output below is
 built to the byte layout of go-sqlcmd's default formatter at commit
