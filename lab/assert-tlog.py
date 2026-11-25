@@ -51,7 +51,9 @@ def main(path):
                 return 1
             got[db, cid] = r
     d07 = got["LogSprawl", "D09"]
-    if len(d07) != 1 or not d07[0][0].isdigit() or int(d07[0][0]) <= 1000:
+    vlf = d07[0][0] if len(d07) == 1 and d07[0] else None
+    ok = isinstance(vlf, str) and 0 < len(vlf) <= 9 and all(c in "0123456789" for c in vlf)
+    if not ok or int(vlf) <= 1000:
         print("FAIL: D09 did not flag LogSprawl with more than 1000 VLFs")
         return 1
     if got["DemoShop", "D09"]:

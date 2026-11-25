@@ -105,7 +105,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 |---|---|
 | LOG\_BACKUP | FULL |
 
-**Fix:** Act on the reason shown. LOG_BACKUP: schedule regular log backups (see S03). Switching to SIMPLE recovery is a DBA decision for the whole recovery plan: it breaks the log-backup chain and is not allowed with log shipping, availability groups or mirroring. ACTIVE_TRANSACTION: find the long open transaction (sys.dm_tran_database_transactions) and have its owner commit or end it. REPLICATION or AVAILABILITY_REPLICA: check that the log reader or secondary is running and caught up. This is a snapshot: run the check again to see if the reason stays.
+**Fix:** Act on the reason shown. LOG_BACKUP: schedule regular log backups (see S03). Switching to SIMPLE recovery is a DBA decision for the whole recovery plan: it breaks the log-backup chain and is not allowed with log shipping, availability groups or mirroring. ACTIVE_TRANSACTION: find the long open transaction (sys.dm_tran_database_transactions) and have its owner commit or end it. REPLICATION or AVAILABILITY_REPLICA: check that the log reader or secondary is running and caught up. Short REPLICATION or AVAILABILITY_REPLICA waits, LOG_SCAN and DATABASE_SNAPSHOT_CREATION can be normal. This is the reason recorded at the last checkpoint, not a measure of log pressure: run the check again to see if the reason stays.
 
 ### S05 [MEDIUM] Old compatibility level (Configuration, \(instance\))
 

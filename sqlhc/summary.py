@@ -53,7 +53,7 @@ IMPACT = {
     "D07": "These database users point to logins that no longer exist on this server, so they are leftovers from a restore, move or dropped login that may hide old permissions.",
     "D08": "The guest user can connect here, so any login on this server without its own user can enter this database and use whatever rights guest and public hold.",
     "D09": "The transaction log is split into very many small pieces, usually from many tiny growths, which can make restarts, restores and backups of this database slower.",
-    "D10": "SQL Server cannot reuse space in this database's transaction log right now, so the log may keep growing until the disk or file limit is hit and writes stop; the reason shown says what is holding it.",
+    "D10": "At its last checkpoint SQL Server recorded a reason it could not reuse space in this database's transaction log; if that reason persists, the log can keep growing until the disk or file limit is hit and writes stop.",
 }
 
 

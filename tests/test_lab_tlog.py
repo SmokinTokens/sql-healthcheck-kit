@@ -78,7 +78,9 @@ class AssertTlogTests(unittest.TestCase):
             rc, out = self.run_on(None, raw=raw)
             self.assertEqual(rc, 1, raw[:20])
             self.assertTrue(out.startswith("FAIL:"), out)
-        for bad in ({"rows": [["2531"]]}, {"rows": [[2531, "1"]]}, {"rows": "x"}, []):
+        for bad in ({"rows": [["2531"]]}, {"rows": [[2531, "1"]]}, {"rows": "x"}, [],
+                    {"rows": [["\u00b2\u00b2\u00b2\u00b2", "1"]]}, {"rows": [["1" * 5000, "1"]]},
+                    {"rows": [["", "1"]]}):
             rc, _ = self.run_on(self.mutate("LogSprawl", "D09", bad))
             self.assertEqual(rc, 1, bad)
 

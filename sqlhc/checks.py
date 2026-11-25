@@ -407,8 +407,11 @@ WHERE p.class = 0 AND p.type = 'CO' AND p.state IN ('G', 'W') AND p.grantee_prin
 FROM sys.dm_db_log_info(DB_ID()) li
 HAVING COUNT(li.vlf_sequence_number) > 1000""",
         "cols": ["vlf_count", "log_mb"], "severity": "low",
-        "fix": "In a quiet window, take a log backup (FULL recovery) or a CHECKPOINT (SIMPLE), shrink the "
-               "log file, then grow it back to the size it really needs in one or a few large steps "
+        "fix": "Plan this with the database owner as an approved maintenance change. Check first for "
+               "availability groups, log shipping, replication or mirroring, and keep the log-backup chain: "
+               "in FULL recovery take a normal log backup (never switch to SIMPLE just to shrink, which "
+               "breaks the chain); in SIMPLE run a CHECKPOINT. Then, in a quiet window, shrink the log file "
+               "and grow it back to the size it really needs in one or a few large steps "
                "(ALTER DATABASE ... MODIFY FILE (NAME = ..., SIZE = ...)). Set a fixed growth in MB, not "
                "a tiny or percent growth, so it does not come back. Check the VLF count again after.",
     },
@@ -429,7 +432,9 @@ WHERE d.database_id = DB_ID() AND d.log_reuse_wait_desc NOT IN ('NOTHING', 'CHEC
                "chain and is not allowed with log shipping, availability groups or mirroring. ACTIVE_TRANSACTION: find the long open transaction "
                "(sys.dm_tran_database_transactions) and have its owner commit or end it. REPLICATION or "
                "AVAILABILITY_REPLICA: check that the log reader or secondary is running and caught up. "
-               "This is a snapshot: run the check again to see if the reason stays.",
+               "Short REPLICATION or AVAILABILITY_REPLICA waits, LOG_SCAN and DATABASE_SNAPSHOT_CREATION can be "
+               "normal. This is the reason recorded at the last checkpoint, not a measure of log pressure: "
+               "run the check again to see if the reason stays.",
     },
 ]
 
