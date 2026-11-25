@@ -211,6 +211,14 @@ def _why_not_fixed(chk, row, before, after, a_rows):
     return None
 
 
+def _capped_why(chk, rows, side):
+    """Per-database checks (scope = the database): only the top-N cap can hide a row."""
+    cap = CAPPED.get(chk["id"])
+    if cap is not None and len(rows) >= cap:
+        return f"{side}: list is a full top {cap}; the item may only have been ranked out"
+    return None
+
+
 def _why_not_new(chk, row, before, after, b_rows):
     """Reason an instance-level row absent before cannot count as new, or None."""
     db = _db_of(chk, row)
@@ -306,13 +314,15 @@ def compare(before, after):
                 for b, a in _pair(bi.get(key, []), ai.get(key, [])):
                     extra = {}
                     if b is None:
-                        why = _why_not_new(chk, a, before, after, b_rows) if is_server else None
+                        why = (_why_not_new(chk, a, before, after, b_rows) if is_server
+                               else _capped_why(chk, b_rows, "before"))
                         if why:
                             st, extra = "unknown", {"reason": why}
                         else:
                             st = "new"
                     elif a is None:
-                        why = _why_not_fixed(chk, b, before, after, a_rows) if is_server else None
+                        why = (_why_not_fixed(chk, b, before, after, a_rows) if is_server
+                               else _capped_why(chk, a_rows, "after"))
                         if why:
                             st, extra = "unknown", {"reason": why}
                         else:

@@ -59,6 +59,28 @@ class LabCompareTests(unittest.TestCase):
         # The fixture also predates D07/D08: a check absent from both runs adds no item.
         self.assertFalse({"D07", "D08"} & {x["check"] for x in diff["items"]})
 
+    def test_d07_full_top_50_is_capped_per_database(self):
+        def runs(b_users, a_users):
+            before, after = lab_before(), lab_after()
+            before["results"]["db"]["DemoShop"]["D07"] = {"rows": [[u, "SQL_USER"] for u in b_users]}
+            after["results"]["db"]["DemoShop"]["D07"] = {"rows": [[u, "SQL_USER"] for u in a_users]}
+            return [x for x in compare(before, after)["items"] if x["check"] == "D07"]
+        full_b = [f"u{i:03d}" for i in range(1, 51)]   # u001..u050
+        full_a = [f"u{i:03d}" for i in range(0, 50)]   # u000..u049
+        d07 = runs(full_b, full_a)
+        # u050 dropped out of a full after-list: unknown, not fixed. u000 is absent from a full
+        # before-list, so it may only have been ranked out then: unknown, not new.
+        st = {x["before"][0] if x["before"] else x["after"][0]: x["status"] for x in d07}
+        self.assertEqual(st["u050"], "unknown")
+        self.assertEqual(st["u000"], "unknown")
+        self.assertEqual(sum(1 for s in st.values() if s == "unchanged"), 49)
+        # Reverse direction: same rule.
+        st = {x["before"][0] if x["before"] else x["after"][0]: x["status"] for x in runs(full_a, full_b)}
+        self.assertEqual((st["u000"], st["u050"]), ("unknown", "unknown"))
+        # Below the cap a vanished orphan is a real fix, and a new one is new.
+        st = {x["before"][0] if x["before"] else x["after"][0]: x["status"] for x in runs(["a", "b"], ["b", "c"])}
+        self.assertEqual(st, {"a": "fixed", "b": "unchanged", "c": "new"})
+
     def test_check_missing_from_one_run_is_unknown(self):
         after = lab_after()
         after["results"]["server"]["S21"] = {"rows": [["DemoShop", "DemoShop", "ROWS", "9", "25", "1", "1"]]}

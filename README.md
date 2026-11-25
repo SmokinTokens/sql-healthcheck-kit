@@ -165,11 +165,12 @@ Exit code: 0 = ran clean, 1 = one or more checks errored (listed in the report).
 
 ## Try it on a demo database
 
-`lab/run-lab.sh` starts a throwaway SQL Server 2022 container, seeds `DemoShop` with 13
+`lab/run-lab.sh` starts a throwaway SQL Server 2022 container, seeds `DemoShop` with 15
 planted defects (including a fake suspect-page row in msdb; no page is really damaged),
 creates the reader login, proves that login is denied writes and row reads, proves the tool
 refuses `sa`, runs the check, then proves the reader login could read both corruption
-sources (S22, S23) with `lab/assert-integrity.py`. Passwords are random and are never put on
+sources (S22, S23) with `lab/assert-integrity.py` and found the planted orphaned user and
+guest `CONNECT` grant (D07, D08) with `lab/assert-security.py`. Passwords are random and are never put on
 a command line; the container keeps `MSSQL_SA_PASSWORD` in its config (`docker inspect`)
 until you remove it. Starting the container sets `ACCEPT_EULA=Y`: by running the script you
 accept the Microsoft SQL Server Developer Edition licence.
