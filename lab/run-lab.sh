@@ -72,3 +72,6 @@ python3 -m sqlhc --server localhost --user hc_reader --trust-cert \
 
 # Proof 3: the reader login can read both corruption sources (S22, S23).
 python3 "$HERE/assert-integrity.py" "$OUT/results.json"
+
+# Proof 4: the reader login finds the planted orphaned user and guest CONNECT (D07, D08).
+python3 "$HERE/assert-security.py" "$OUT/results.json"

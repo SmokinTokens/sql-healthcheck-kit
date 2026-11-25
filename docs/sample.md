@@ -1,6 +1,6 @@
 # SQL Server Health Check (sample, demo data)
 
-- Run: 2026-01-15T09:00:00, 2.3 s, 19 instance checks + 6 per-database checks over 1 user database(s).
+- Run: 2026-01-15T09:00:00, 2.3 s, 19 instance checks + 8 per-database checks over 1 user database(s).
 - Server: SQL Server 16.0.4305.5 RTM, Developer Edition \(64\-bit\), 4 CPUs, 16384 MB RAM, up 0 h.
 - Access: catalog views and DMVs only, sent as SELECT statements. No user table rows read; no data or settings changed.
 - Query text: literals redacted (strings, numbers, hex replaced with ?).
@@ -16,7 +16,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 
 ## Summary
 
-**4 high, 8 medium, 5 low** findings.
+**4 high, 9 medium, 6 low** findings.
 
 - **HIGH** S02 Databases without a recent full backup (7 days) - \(instance\): 3 item(s)
 - **HIGH** S03 FULL recovery databases without log backups (24 h) - \(instance\): 1 item(s)
@@ -24,6 +24,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 - **HIGH** S22 Suspect pages (823/824 errors) in msdb.dbo.suspect_pages - \(instance\): 1 item(s)
 - **MEDIUM** D01 Large heaps (tables without a clustered index) - DemoShop: 1 item(s)
 - **MEDIUM** D02 Duplicate indexes (same key columns) - DemoShop: 1 item(s)
+- **MEDIUM** D08 guest user can connect (CONNECT granted) - DemoShop: 1 item(s)
 - **MEDIUM** S05 Old compatibility level - \(instance\): 1 item(s)
 - **MEDIUM** S07 Instance settings left at defaults - \(instance\): 5 item(s)
 - **MEDIUM** S08 Sysadmin members (non-system) - \(instance\): 4 item(s)
@@ -33,6 +34,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 - **LOW** D03 Left-prefix overlapping indexes - DemoShop: 2 item(s)
 - **LOW** D04 Untrusted foreign keys / check constraints - DemoShop: 1 item(s)
 - **LOW** D05 Write-only indexes (writes, no reads since startup) - DemoShop: 2 item(s)
+- **LOW** D07 Orphaned database users (no matching login) - DemoShop: 1 item(s)
 - **LOW** S06 Percent-based file growth - \(instance\): 5 item(s)
 - **LOW** S10 'sa' login enabled - \(instance\): 1 item(s)
 
@@ -87,6 +89,14 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 | dbo.Orders | IX\_Orders\_Cust | IX\_Orders\_Cust\_Dup | 2 |
 
 **Fix:** Potential duplicates: the keys match, but INCLUDE columns, filters and uniqueness are not compared. Before dropping one, compare the full definitions, keep any index that enforces uniqueness or a constraint, and check index hints that name it. Each extra index adds overhead to inserts, deletes and key updates.
+
+### D08 [MEDIUM] guest user can connect (CONNECT granted) (Security, DemoShop)
+
+| user | state |
+|---|---|
+| guest | GRANT |
+
+**Fix:** Run REVOKE CONNECT FROM guest in this database (Microsoft's best-practice rule for user databases), after you confirm no application relies on guest access. Logins that need the database then get their own database user and roles.
 
 ### S05 [MEDIUM] Old compatibility level (Configuration, \(instance\))
 
@@ -170,6 +180,14 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 | dbo.Orders | IX\_Orders\_Cust\_Date | 1 | 0 |
 
 **Fix:** Candidates to drop only after a full business cycle of uptime (month-end included).
+
+### D07 [LOW] Orphaned database users (no matching login) (Security, DemoShop)
+
+| user | type |
+|---|---|
+| lab\_orphan | SQL\_USER |
+
+**Fix:** For each user, map it to the right login with ALTER USER <user> WITH LOGIN = <login>. If nobody needs it and it owns no schema, drop the user. If it owns a schema, leave it in place: do not change the owner or drop anything as part of this cleanup. Changing a schema owner drops every permission on the schema itself and on objects in it that have no explicit owner (grants, denies and grant options), so treat it as a separate, tested change that records those permissions first, restores them after, and checks application access. Do not use the deprecated sp_change_users_login. Built-in users (dbo, guest, INFORMATION_SCHEMA, sys) are not listed. Windows users are not listed (they can still get in through a Windows group login).
 
 ### S06 [LOW] Percent-based file growth (Configuration, \(instance\))
 

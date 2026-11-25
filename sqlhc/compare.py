@@ -41,11 +41,11 @@ KEY_COLS = {
     "D01": ["table"], "D02": ["table", "index_a", "index_b"], "D03": ["table", "narrower_index", "covered_by"],
     "D04": ["table", "constraint"], "D05": ["table", "index"], "S21": ["database", "file"],
     "S22": ["database", "file_id", "page_id"], "S23": ["database"],
-    "S24": ["job"], "S25": ["job"],
+    "S24": ["job"], "S25": ["job"], "D07": ["user"], "D08": [],
 }
 # Checks that return only the top N rows. An item missing from a full top-N list may
 # just have been ranked out, so it is unknown, not fixed.
-CAPPED = {"S13": 10, "S21": 15, "S22": 20, "S24": 20, "S25": 50}
+CAPPED = {"S13": 10, "S21": 15, "S22": 20, "S24": 20, "S25": 50, "D07": 50}
 # System databases are not in the 'dbs' list (database_id <= 4), so a run holds no
 # record of their state. master and tempdb cannot be set OFFLINE and the instance does
 # not run without them, so they are always covered. model and msdb have no state
@@ -211,6 +211,14 @@ def _why_not_fixed(chk, row, before, after, a_rows):
     return None
 
 
+def _capped_why(chk, rows, side):
+    """Per-database checks (scope = the database): only the top-N cap can hide a row."""
+    cap = CAPPED.get(chk["id"])
+    if cap is not None and len(rows) >= cap:
+        return f"{side}: list is a full top {cap}; the item may only have been ranked out"
+    return None
+
+
 def _why_not_new(chk, row, before, after, b_rows):
     """Reason an instance-level row absent before cannot count as new, or None."""
     db = _db_of(chk, row)
@@ -306,13 +314,15 @@ def compare(before, after):
                 for b, a in _pair(bi.get(key, []), ai.get(key, [])):
                     extra = {}
                     if b is None:
-                        why = _why_not_new(chk, a, before, after, b_rows) if is_server else None
+                        why = (_why_not_new(chk, a, before, after, b_rows) if is_server
+                               else _capped_why(chk, b_rows, "before"))
                         if why:
                             st, extra = "unknown", {"reason": why}
                         else:
                             st = "new"
                     elif a is None:
-                        why = _why_not_fixed(chk, b, before, after, a_rows) if is_server else None
+                        why = (_why_not_fixed(chk, b, before, after, a_rows) if is_server
+                               else _capped_why(chk, a_rows, "after"))
                         if why:
                             st, extra = "unknown", {"reason": why}
                         else:

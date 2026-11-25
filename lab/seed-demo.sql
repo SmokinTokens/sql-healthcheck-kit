@@ -1,5 +1,5 @@
 -- LAB ONLY. Never run this on a real server.
--- Builds a throwaway demo database (DemoShop) with 13 planted defects, so you
+-- Builds a throwaway demo database (DemoShop) with 15 planted defects, so you
 -- can see what the health check finds. Run it as sa on a disposable container.
 -- No password is stored here: the demo app login gets a random password that
 -- is generated inside SQL Server and never printed.
@@ -56,4 +56,18 @@ IF NOT EXISTS (SELECT 1 FROM msdb.dbo.suspect_pages WHERE database_id = DB_ID('D
   INSERT msdb.dbo.suspect_pages (database_id, file_id, page_id, event_type, error_count, last_update_date)
   VALUES (DB_ID('DemoShop'), 1, 312, 2, 3, GETDATE());
 DBCC CHECKDB (master) WITH NO_INFOMSGS;
+GO
+-- defect: an orphaned user (D07). A login gets a DemoShop user, then the login is
+-- dropped, so the user's SID matches no login. Random password, never shown.
+USE DemoShop;
+IF SUSER_ID('lab_gone') IS NULL AND USER_ID('lab_orphan') IS NULL
+BEGIN
+  DECLARE @pw nvarchar(80) = CONVERT(nvarchar(36), NEWID()) + N'-' + CONVERT(nvarchar(36), NEWID());
+  DECLARE @s nvarchar(400) = N'CREATE LOGIN lab_gone WITH PASSWORD = ' + QUOTENAME(@pw, '''') + N';';
+  EXEC (@s);
+  CREATE USER lab_orphan FOR LOGIN lab_gone;
+  DROP LOGIN lab_gone;
+END
+-- defect: the guest user can connect to a user database (D08).
+GRANT CONNECT TO guest;
 GO

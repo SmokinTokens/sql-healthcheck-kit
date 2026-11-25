@@ -50,6 +50,8 @@ IMPACT = {
     "D04": "SQL Server cannot rely on these constraints, so some queries may run slower, and data that breaks the rules may already be stored.",
     "D05": "These indexes show recorded writes but no recorded reads in the stats available, so they may cost write time for no use; watch a full business cycle before removing any.",
     "D06": "This shows database file sizes, for context only.",
+    "D07": "These database users point to logins that no longer exist on this server, so they are leftovers from a restore, move or dropped login that may hide old permissions.",
+    "D08": "The guest user can connect here, so any login on this server without its own user can enter this database and use whatever rights guest and public hold.",
 }
 
 

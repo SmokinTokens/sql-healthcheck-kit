@@ -356,6 +356,44 @@ WHERE i.index_id > 1 AND i.is_primary_key = 0 AND i.is_unique_constraint = 0
 FROM sys.database_files""",
         "cols": ["file", "type", "size_mb", "max_mb"], "severity": "info",
     },
+    {
+        # Orphaned users: a login-based user whose SID has no login in sys.server_principals.
+        # Same test as Microsoft Learn "Troubleshoot orphaned users" (authentication_type_desc
+        # = 'INSTANCE'); contained users (DATABASE) and users WITHOUT LOGIN (NONE) are skipped.
+        # Readable with VIEW ANY DEFINITION; runs in user databases only.
+        "id": "D07", "title": "Orphaned database users (no matching login)", "area": "Security",
+        "sql": """SELECT TOP (50) dp.name, dp.type_desc
+FROM sys.database_principals dp
+LEFT JOIN sys.server_principals sp ON sp.sid = dp.sid
+WHERE sp.sid IS NULL AND dp.authentication_type_desc = 'INSTANCE'
+  AND dp.principal_id > 4
+ORDER BY dp.name""",
+        "cols": ["user", "type"], "severity": "low",
+        "fix": "For each user, map it to the right login with ALTER USER <user> WITH LOGIN = <login>. "
+               "If nobody needs it and it owns no schema, drop the user. If it owns a schema, leave it in "
+               "place: do not change the owner or drop anything as part of this cleanup. Changing a schema "
+               "owner drops every permission on the schema itself and on objects in it that have no explicit "
+               "owner (grants, denies and grant options), so treat it as a separate, tested change that "
+               "records those permissions first, restores them after, and checks application access. "
+               "Do not use the deprecated sp_change_users_login. Built-in users (dbo, guest, "
+               "INFORMATION_SCHEMA, sys) are not listed. Windows users are not listed (they can still get in "
+               "through a Windows group login).",
+    },
+    {
+        # guest with CONNECT lets every login without its own user enter the database as guest.
+        # User databases only (the runner skips master, tempdb, msdb and model). Granted or
+        # granted WITH GRANT OPTION ('G', 'W') counts; an explicit DENY does not. guest is
+        # always principal_id 2, so a case-sensitive database collation cannot hide it.
+        "id": "D08", "title": "guest user can connect (CONNECT granted)", "area": "Security",
+        "sql": """SELECT dp.name, p.state_desc
+FROM sys.database_permissions p
+JOIN sys.database_principals dp ON dp.principal_id = p.grantee_principal_id
+WHERE p.class = 0 AND p.type = 'CO' AND p.state IN ('G', 'W') AND p.grantee_principal_id = 2""",
+        "cols": ["user", "state"], "severity": "medium",
+        "fix": "Run REVOKE CONNECT FROM guest in this database (Microsoft's best-practice rule for user "
+               "databases), after you confirm no application relies on guest access. Logins that need "
+               "the database then get their own database user and roles.",
+    },
 ]
 
 # Privilege probe: read-only functions only. The runner refuses to run when the
