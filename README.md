@@ -58,6 +58,7 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 | S22 | Suspect pages (823/824 errors, bad checksum, torn page) in `msdb.dbo.suspect_pages` | high |
 | S23 | `DBCC CHECKDB` overdue or unverifiable (7 days) | medium |
 | S24 | SQL Agent jobs with a failed run in the last 7 days (top 20) | medium |
+| S26 | Last full backup taken without CHECKSUM, flagged damaged, or only copy-only fulls on record | medium |
 | D01 | Large heaps | medium |
 | D02 | Duplicate indexes | medium |
 | D08 | `guest` user can connect (CONNECT granted) in a user database | medium |
@@ -66,6 +67,7 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 | S10 | `sa` login enabled | low |
 | S11 | tempdb data files vs CPUs | low |
 | S25 | Enabled SQL Agent jobs with no enabled schedule (top 50) | low |
+| S27 | Last full backup: native backup encryption not recorded in msdb (skipped on Express/Web) | low |
 | D03 | Left-prefix overlapping indexes | low |
 | D04 | Untrusted foreign keys / check constraints | low |
 | D05 | Write-only indexes | low |
@@ -101,6 +103,40 @@ for each online database except tempdb and snapshots. `NEVER` means the server r
 could not be read; one cause is a server older than SQL Server 2016 SP2 / 2017 CU9, which
 lack the property. In an availability group the date is the
 last good CHECKDB on the primary replica.
+
+S26 and S27 judge the most recent full backup (copy-only included) of each online database
+from [`msdb.dbo.backupset`](https://learn.microsoft.com/sql/relational-databases/system-tables/backupset-transact-sql),
+which the reader login can already read. Databases with no full backup on record at all are S02's job.
+S26 lists `no CHECKSUM` when `has_backup_checksums` is 0: `BACKUP` defaults to `NO_CHECKSUM`,
+except for compressed backups or when the `backup checksum default` server option is on
+([BACKUP](https://learn.microsoft.com/sql/t-sql/statements/backup-transact-sql),
+[Enable or disable backup checksums](https://learn.microsoft.com/sql/relational-databases/backup-restore/enable-or-disable-backup-checksums-during-backup-or-restore-sql-server)).
+With `CHECKSUM` the backup verifies page checksums and records a backup checksum; under the
+default `STOP_ON_ERROR` a bad page stops it, but `CONTINUE_AFTER_ERROR` lets it finish and
+marks it damaged. Neither proves the backup restores, so test a restore.
+It lists `DAMAGED` when `is_damaged` is 1 (the backup continued despite errors), and
+`copy-only fulls only` when no regular full is on record: a copy-only full cannot be a
+differential base ([Copy-only backups](https://learn.microsoft.com/sql/relational-databases/backup-restore/copy-only-backups-sql-server)).
+That is a question for the backup owner, not an order to add a full: another tool may take
+the regular fulls, and a new regular full resets the differential base for later differentials.
+S27 lists databases whose last full has no native backup encryption recorded (`encryptor_type`
+is NULL and `key_algorithm` is NULL or `NO_Encryption`). It uses only these backup-bound
+columns: msdb records no TDE state per backup, and the database's current TDE setting says
+nothing about an older backup, so TDE, encrypted storage or a third-party tool may still
+protect a listed backup. Verify that before changing anything. Express and Web editions
+cannot encrypt backups
+([Backup encryption](https://learn.microsoft.com/sql/relational-databases/backup-restore/backup-encryption)),
+so S27 returns nothing there. Only retained full backups that match the database's current
+name and `database_guid` ([sys.database_recovery_status](https://learn.microsoft.com/sql/relational-databases/system-catalog-views/sys-database-recovery-status-transact-sql))
+count, so a dropped and recreated database never inherits an old namesake's backups; a
+restore that changes that GUID excludes earlier history. S02 matches by name only, so when
+every full on record belongs to an older copy (another non-NULL GUID), S26 lists the database
+as `no full since recreated or restored`. A full with a NULL `database_guid` has unknown
+provenance, not an older copy: when no full matches the current copy and any such full is on
+record (alone or next to older-copy fulls), S26 lists `history unknown` with `last_full`
+`UNKNOWN`. msdb history covers only backups this instance took and keeps;
+a backup tool that writes elsewhere, or a history cleanup, hides them from both checks.
+For the same reason, `sqlhc.compare` reports an S26/S27 row that disappears as unknown, not fixed.
 
 S24 and S25 read `msdb.dbo.sysjobs`, `sysjobhistory`, `sysjobschedules` and `sysschedules`
 ([sysjobhistory](https://learn.microsoft.com/sql/relational-databases/system-tables/dbo-sysjobhistory-transact-sql):
@@ -193,8 +229,10 @@ Exit code: 0 = ran clean, 1 = one or more checks errored (listed in the report).
 planted defects (including a fake suspect-page row in msdb; no page is really damaged),
 creates the reader login, proves that login is denied writes and row reads, proves the tool
 refuses `sa`, runs the check, then proves the reader login could read both corruption
-sources (S22, S23) with `lab/assert-integrity.py` and found the planted orphaned user and
-guest `CONNECT` grant (D07, D08) with `lab/assert-security.py`. Passwords are random and are never put on
+sources (S22, S23) with `lab/assert-integrity.py`, found the planted orphaned user and
+guest `CONNECT` grant (D07, D08) with `lab/assert-security.py`, and that S26/S27 judge
+three planted backups correctly (a plain full, a full `WITH CHECKSUM`, a copy-only full)
+with `lab/assert-backup-quality.py`. Passwords are random and are never put on
 a command line; the container keeps `MSSQL_SA_PASSWORD` in its config (`docker inspect`)
 until you remove it. Starting the container sets `ACCEPT_EULA=Y`: by running the script you
 accept the Microsoft SQL Server Developer Edition licence.
@@ -263,7 +301,7 @@ What is different here:
 | | This kit | First Responder Kit |
 |---|---|---|
 | Install on the server | Nothing. Queries are sent from the client | Stored procedures, usually in `master` |
-| Checks | 29 single `SELECT` checks | Hundreds of checks across several procedures |
+| Checks | 31 single `SELECT` checks | Hundreds of checks across several procedures |
 | Login | Least-privilege reader; refuses to run as sysadmin or any write-capable login | Not restricted; some checks need high rights (e.g. trace-flag checks via `DBCC TRACESTATUS`) |
 | Output | One Markdown report, one self-contained HTML report, and JSON | Result sets in SSMS, optional output tables |
 | Query text | Literals redacted by default | Full query text and plans |

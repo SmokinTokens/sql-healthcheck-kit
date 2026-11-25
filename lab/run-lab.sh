@@ -88,3 +88,6 @@ echo "ok: LogSprawl VLF count (sa, sys.dm_db_log_info) = $VLFS"
 
 # Proof 5: the reader login can read the transaction-log sources (D09 VLFs, D10 reuse wait).
 python3 "$HERE/assert-tlog.py" "$OUT/results.json"
+
+# Proof 6: the reader login judged the planted backups (S26, S27): plain, CHECKSUM, copy-only.
+python3 "$HERE/assert-backup-quality.py" "$OUT/results.json"

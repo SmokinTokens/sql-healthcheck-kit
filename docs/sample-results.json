@@ -55,16 +55,6 @@
       "model",
       "FULL",
       "NEVER"
-     ],
-     [
-      "master",
-      "SIMPLE",
-      "NEVER"
-     ],
-     [
-      "msdb",
-      "SIMPLE",
-      "NEVER"
      ]
     ]
    },
@@ -73,6 +63,36 @@
      [
       "DemoShop",
       "NEVER"
+     ]
+    ]
+   },
+   "S26": {
+    "rows": [
+     [
+      "DemoShop",
+      "2026-01-15 08:58:12",
+      "no CHECKSUM; "
+     ],
+     [
+      "msdb",
+      "2026-01-15 08:58:14",
+      "copy-only fulls only; "
+     ]
+    ]
+   },
+   "S27": {
+    "rows": [
+     [
+      "DemoShop",
+      "2026-01-15 08:58:12"
+     ],
+     [
+      "master",
+      "2026-01-15 08:58:13"
+     ],
+     [
+      "msdb",
+      "2026-01-15 08:58:14"
      ]
     ]
    },

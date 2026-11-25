@@ -11,6 +11,10 @@ from sqlhc.redact import redact  # noqa: E402
 from sqlhc.summary import AREA_RANK, IMPACT, top_findings  # noqa: E402
 from sqlhc.runner import GuardError, collect, esc, findings_of, guard, md_table, render_markdown, rows_of  # noqa: E402
 
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "README.md"),
+          encoding="utf-8") as _f:
+    README = _f.read()
+
 ALL = SERVER_CHECKS + DB_CHECKS + [PRIV_PROBE, DB_PRIV_PROBE]
 
 
@@ -161,7 +165,7 @@ class ReportTests(unittest.TestCase):
     def test_every_check_has_one_impact_line(self):
         ids = {c["id"] for c in SERVER_CHECKS + DB_CHECKS}
         self.assertEqual(set(IMPACT), ids)
-        self.assertEqual(len(IMPACT), 29)
+        self.assertEqual(len(IMPACT), 31)
         for cid, text in IMPACT.items():
             self.assertTrue(text.endswith("."), cid)
             self.assertNotIn("\n", text, cid)
@@ -663,6 +667,179 @@ class AgentJobTests(unittest.TestCase):
         self.assertEqual(items["S25"]["status"], "fixed")
 
 
+class BackupQualityTests(unittest.TestCase):
+    """S26/S27: quality of the latest full backup from msdb.dbo.backupset. Offline proof only;
+    lab/assert-backup-quality.py is the lab gate for the real SQL."""
+    S26 = next(c for c in SERVER_CHECKS if c["id"] == "S26")
+    S27 = next(c for c in SERVER_CHECKS if c["id"] == "S27")
+
+    def test_shape_and_guard(self):
+        for c, sev, area, n in ((self.S26, "medium", "Recoverability", 3), (self.S27, "low", "Security", 2)):
+            guard(c["sql"])
+            self.assertEqual(c["severity"], sev)
+            self.assertEqual(c["area"], area)
+            self.assertTrue(c["fix"])
+            self.assertEqual(len(c["cols"]), n)
+            self.assertEqual(c["cols"][0], "database")
+
+    def test_sit_next_to_s02_s03(self):
+        ids = [c["id"] for c in SERVER_CHECKS]
+        self.assertEqual(ids[ids.index("S03") + 1:ids.index("S03") + 3], ["S26", "S27"])
+
+    def test_read_only_backupset_and_catalog(self):
+        for c in (self.S26, self.S27):
+            self.assertEqual(set(re.findall(r"\bmsdb\.dbo\.(\w+)", c["sql"])), {"backupset"})
+            self.assertEqual(set(re.findall(r"\bsys\.(\w+)", c["sql"])), {"databases", "database_recovery_status"})
+            self.assertNotRegex(c["sql"], r"SELECT\s+\*")
+
+    def test_history_bound_to_current_database_incarnation(self):
+        # Review r1: name-only matching let a dropped/recreated namesake's old backups count.
+        for c in (self.S26, self.S27):
+            self.assertIn("rs.database_id = d.database_id AND rs.database_guid IS NOT NULL", c["sql"])
+            self.assertIn("b.database_guid = rs.database_guid", c["sql"])
+        self.assertIn("b2.database_guid = rs.database_guid", self.S26["sql"])
+        self.assertIn("CROSS APPLY", self.S27["sql"])  # S27: no current-copy full -> no row
+
+    def test_s26_reports_recreated_db_whose_fulls_all_belong_to_an_older_copy(self):
+        # Review r2: S02 matches by name, so an old copy's recent full hides a recreated database
+        # with no full of its own. S26 must list it (name match, other or NULL GUID, no current full).
+        sql = self.S26["sql"]
+        self.assertIn("b3.database_guid IS NOT NULL AND b3.database_guid <> rs.database_guid", sql)
+        self.assertIn("OR (f.backup_set_id IS NULL AND (o.backup_set_id IS NOT NULL OR n.backup_set_id IS NOT NULL))", sql)
+        self.assertIn("WHEN f.backup_set_id IS NULL THEN 'no full since recreated or restored; '", sql)
+        self.assertIn("CASE WHEN n.backup_set_id IS NULL THEN 'NONE FOR THIS COPY' ELSE 'UNKNOWN' END", sql)
+        # No full of any copy: f, o and n all NULL -> no row (S02 lists it as NEVER).
+        self.assertNotIn("CROSS APPLY", sql)
+        self.assertIn("No full since recreated or restored", self.S26["fix"].replace("'", ""))
+
+    def test_s26_null_guid_is_unknown_history_not_an_older_copy(self):
+        # Lead adversarial LOW3: a NULL backupset.database_guid is unknown provenance.
+        sql = self.S26["sql"]
+        self.assertIn("b4.database_guid IS NULL) n", sql)
+        self.assertNotIn("b3.database_guid IS NULL OR", sql)
+        # Review r1 (this pass): NULL-GUID history wins over older-copy history, even when mixed,
+        # so 'no full since recreated' (every full is older) is said only when no NULL GUID exists.
+        unknown = ("CASE WHEN f.backup_set_id IS NULL AND n.backup_set_id IS NOT NULL\n"
+                   "   THEN 'some fulls on record have no database_guid (history unknown); '")
+        self.assertIn(unknown, sql)
+        self.assertLess(sql.index(unknown), sql.index("'no full since recreated or restored; '"))
+        fix = self.S26["fix"]
+        self.assertIn("'History unknown' means no full matches the current copy and some fulls on record "
+                      "have no database_guid", fix)
+        self.assertIn("cannot tell which copy they belong to", fix)
+
+    def test_s26_copy_only_advice_checks_strategy_before_adding_a_full(self):
+        # Lead adversarial MED2: never tell a DBA to just add a regular full.
+        fix = self.S26["fix"]
+        self.assertNotIn("add a regular full", fix)
+        a = fix.index("first check the real backup strategy with its owner")
+        b = fix.index("A new regular full resets the differential base")
+        self.assertLess(a, b)
+        self.assertIn("do not add one without that check", fix)
+
+    def test_s26_checksum_text_does_not_overclaim(self):
+        # Lead adversarial LOW5: CONTINUE_AFTER_ERROR lets a checksum backup finish.
+        fix = self.S26["fix"]
+        self.assertNotIn("instead of being copied into it", fix)
+        self.assertIn("CONTINUE_AFTER_ERROR", fix)
+        self.assertIn("test a restore", fix)
+        self.assertIn("CONTINUE_AFTER_ERROR", README)
+
+    def test_latest_full_only_copy_only_included(self):
+        for c in (self.S26, self.S27):
+            self.assertIn("b.type = 'D'", c["sql"])
+            # Review r1: equal datetime finish times need a deterministic winner.
+            self.assertIn("ORDER BY b.backup_finish_date DESC, b.backup_set_id DESC", c["sql"])
+            self.assertIn("SELECT TOP (1)", c["sql"])
+            self.assertIn("d.state = 0", c["sql"])
+            self.assertIn("d.name <> 'tempdb'", c["sql"])
+
+    def test_s26_flags(self):
+        sql = self.S26["sql"]
+        self.assertIn("ISNULL(f.has_backup_checksums, 0) = 0", sql)
+        self.assertIn("f.is_damaged = 1", sql)
+        self.assertIn("b2.is_copy_only = 0", sql)
+        self.assertIn("r.backup_set_id IS NULL", sql)
+        for label in ("no CHECKSUM; ", "DAMAGED (taken despite errors); ", "copy-only fulls only; "):
+            self.assertIn(label, sql)
+
+    def test_s27_uses_backup_bound_evidence_only(self):
+        # Lead adversarial MED1: current TDE state must not judge a historical backup.
+        sql = self.S27["sql"]
+        self.assertIn("f.encryptor_type IS NULL", sql)
+        self.assertIn("UPPER(ISNULL(f.key_algorithm, N'NO_ENCRYPTION')) = N'NO_ENCRYPTION'", sql)
+        self.assertNotIn("is_encrypted", sql)
+        self.assertIn("NOT LIKE N'Express%'", sql)
+        self.assertIn("NOT LIKE N'Web%'", sql)
+
+    def test_s27_wording_native_encryption_not_recorded(self):
+        # Lead adversarial LOW4: say what history shows, note other protection, verify first.
+        from sqlhc.summary import IMPACT
+        self.assertEqual(self.S27["title"], "Last full backup: native backup encryption not recorded")
+        fix = self.S27["fix"]
+        for phrase in ("records no native backup encryption", "backup history cannot show this",
+                       "Verify how the backup files are protected before changing anything"):
+            self.assertIn(phrase, fix)
+        self.assertLess(fix.index("Verify how"), fix.index("WITH ENCRYPTION"))
+        self.assertIn("no native encryption", IMPACT["S27"])
+        self.assertIn("verify how they are protected before changing anything", IMPACT["S27"])
+        self.assertNotIn("is not encrypted", IMPACT["S27"])
+        self.assertIn("current TDE setting says\nnothing about an older backup", README)
+
+    def test_lab_shaped_output_parses_and_renders(self):
+        out = ("DemoShop\x1f2026-11-25 01:50:00\x1fno CHECKSUM; \n"
+               "msdb\x1f2026-11-25 01:50:01\x1fcopy-only fulls only; \n\n(2 rows affected)\n")
+        d = [0]
+        rows = rows_of(out, len(self.S26["cols"]), d)
+        self.assertEqual(d[0], 0)
+        self.assertEqual([r[0] for r in rows], ["DemoShop", "msdb"])
+        server = {c["id"]: {"rows": []} for c in SERVER_CHECKS}
+        server["S01"] = {"rows": [["16.0.1", "RTM", "Developer", "4", "8000", "300"]]}
+        server["S26"] = {"rows": rows}
+        server["S27"] = {"rows": [["DemoShop", "2026-11-25 01:50:00"]]}
+        data = {"started": "2026-01-01T00:00:00", "secs": 1.0, "probe": {}, "powerful": [],
+                "dbs": [], "skipped_dbs": [], "results": {"server": server, "db": {}},
+                "full_query_text": False}
+        self.assertEqual([f[0]["id"] for f in findings_of(data)], ["S26", "S27"])
+        md, counts, _ = render_markdown(data)
+        self.assertEqual(counts, {"high": 0, "medium": 1, "low": 1})
+        self.assertIn("S26 [MEDIUM] Last full backup without CHECKSUM", md)
+        self.assertIn("S27 [LOW] Last full backup: native backup encryption not recorded", md)
+
+    def test_compare_keys_by_database(self):
+        from sqlhc.compare import CAPPED, KEY_COLS
+        for cid in ("S26", "S27"):
+            self.assertEqual(KEY_COLS[cid], ["database"])
+            self.assertNotIn(cid, CAPPED)
+
+    def test_compare_never_calls_a_vanished_backup_row_fixed(self):
+        # Review r1: purging msdb history (or a restore: new database_guid) empties S26/S27.
+        from sqlhc.compare import compare
+
+        def run(s02, s26, s27):
+            server = {c["id"]: {"rows": []} for c in SERVER_CHECKS}
+            server["S02"] = {"rows": s02}
+            server["S26"] = {"rows": s26}
+            server["S27"] = {"rows": s27}
+            return {"started": "2026-01-01T00:00:00", "secs": 1.0, "probe": {}, "powerful": [],
+                    "dbs": ["DemoShop"], "skipped_dbs": [],
+                    "results": {"server": server, "db": {"DemoShop": {c["id"]: {"rows": []} for c in DB_CHECKS}}},
+                    "full_query_text": False}
+        before = run([], [["DemoShop", "2026-11-20 01:00:00", "no CHECKSUM; "]],
+                     [["DemoShop", "2026-11-20 01:00:00"], ["master", "2026-11-20 01:00:00"]])
+        after = run([["DemoShop", "FULL", "NEVER"]], [], [])
+        vanished = [x for x in compare(before, after)["items"] if x["check"] in ("S26", "S27")]
+        self.assertEqual(len(vanished), 3)  # S26 DemoShop, S27 DemoShop, S27 master
+        for x in vanished:
+            self.assertEqual(x["status"], "unknown", x)
+            self.assertIn("backup history may have been purged", x["reason"])
+
+    def test_grant_covers_backupset(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "sql", "grant-reader.sql"), encoding="utf-8") as f:
+            self.assertIn("GRANT SELECT ON dbo.backupset TO hc_reader", f.read())
+
+
 class GrantReaderScriptTests(unittest.TestCase):
     """sql/grant-reader.sql must refuse a pre-existing hc_reader before it grants anything."""
 
@@ -876,3 +1053,14 @@ class OrphanCheckSafetyTests(unittest.TestCase):
         self.assertIn("leave it in place", fix)
         for word in ("schema itself", "denies", "grant options", "restores them"):
             self.assertIn(word, fix)
+
+class S26AdviceSafetyTests(unittest.TestCase):
+    """Every S26 new-full recommendation goes through the backup owner first."""
+
+    def test_s26_no_unconditional_new_full(self):
+        chk = next(c for c in SERVER_CHECKS if c["id"] == "S26")
+        fix = chk["fix"].lower()
+        self.assertNotIn("take a new full backup now", fix)
+        self.assertNotIn("take a clean full", fix)
+        self.assertIn("before taking any new regular full", fix)
+        self.assertIn("differential", fix)

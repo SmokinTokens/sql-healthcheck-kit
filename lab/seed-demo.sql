@@ -71,3 +71,13 @@ END
 -- defect: the guest user can connect to a user database (D08).
 GRANT CONNECT TO guest;
 GO
+-- S26/S27 controls. The compressed DemoShop full above has backup checksums anyway
+-- (compressed backups checksum by default), so a plain uncompressed full is taken last:
+-- it is the defect S26 must list as 'no CHECKSUM'. master gets a regular full WITH
+-- CHECKSUM: S26 must NOT list it. msdb gets only a copy-only full WITH CHECKSUM: S26 must
+-- list it as 'copy-only fulls only'. None is encrypted, so S27 lists all three
+-- (Developer edition can encrypt backups). model has no full: S02's job, not S26/S27.
+BACKUP DATABASE DemoShop TO DISK = '/var/opt/mssql/data/DemoShop_plain.bak' WITH INIT, NO_COMPRESSION, NO_CHECKSUM;
+BACKUP DATABASE master TO DISK = '/var/opt/mssql/data/master_full.bak' WITH INIT, CHECKSUM;
+BACKUP DATABASE msdb TO DISK = '/var/opt/mssql/data/msdb_copy.bak' WITH INIT, CHECKSUM, COPY_ONLY;
+GO
