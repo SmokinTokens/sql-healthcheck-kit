@@ -60,6 +60,7 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 | S24 | SQL Agent jobs with a failed run in the last 7 days (top 20) | medium |
 | D01 | Large heaps | medium |
 | D02 | Duplicate indexes | medium |
+| D08 | `guest` user can connect (CONNECT granted) in a user database | medium |
 | S06 | Percent-based file growth | low |
 | S10 | `sa` login enabled | low |
 | S11 | tempdb data files vs CPUs | low |
@@ -67,6 +68,7 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 | D03 | Left-prefix overlapping indexes | low |
 | D04 | Untrusted foreign keys / check constraints | low |
 | D05 | Write-only indexes | low |
+| D07 | Orphaned database users: login-based users with no matching login (top 50) | low |
 | S01, S12, S14, D06 | Inventory, top waits, top queries by CPU (redacted), file sizes | context |
 
 The report also warns when uptime is under 7 days (DMV stats reset at restart) and when
@@ -114,6 +116,18 @@ in total and 100 per job by default
 so on a busy server an empty S24 can mean the failures were already purged. S25 does not
 detect a schedule that is enabled but already ended. Express edition has no Agent: both
 checks then return nothing.
+
+D07 and D08 run in each user database and read catalog views only (`VIEW ANY DEFINITION`).
+D07 uses Microsoft's own orphan test: a user with `authentication_type_desc = 'INSTANCE'`
+whose SID has no row in `sys.server_principals`
+([Troubleshoot orphaned users](https://learn.microsoft.com/sql/sql-server/failover-clusters/troubleshoot-orphaned-users-sql-server)).
+Contained users and users without a login are not orphans and are skipped. Windows users
+are skipped too, as in Microsoft's query: they can still connect through a Windows group
+login. Fix with `ALTER USER ... WITH LOGIN`, not the deprecated `sp_change_users_login`.
+D08 lists a database-level `CONNECT` grant to `guest` (principal id 2). Microsoft's
+best-practice rule is to revoke it in user databases unless it is needed
+([Guest permissions on user databases](https://learn.microsoft.com/sql/relational-databases/policy-based-management/guest-permissions-on-user-databases)).
+`master`, `msdb` and `tempdb` need guest, so the kit does not check system databases here.
 
 ## Quick start
 
@@ -223,7 +237,7 @@ What is different here:
 | | This kit | First Responder Kit |
 |---|---|---|
 | Install on the server | Nothing. Queries are sent from the client | Stored procedures, usually in `master` |
-| Checks | 25 single `SELECT` checks | Hundreds of checks across several procedures |
+| Checks | 27 single `SELECT` checks | Hundreds of checks across several procedures |
 | Login | Least-privilege reader; refuses to run as sysadmin or any write-capable login | Not restricted; some checks need high rights (e.g. trace-flag checks via `DBCC TRACESTATUS`) |
 | Output | One Markdown report, one self-contained HTML report, and JSON | Result sets in SSMS, optional output tables |
 | Query text | Literals redacted by default | Full query text and plans |

@@ -52,9 +52,12 @@ class LabCompareTests(unittest.TestCase):
         b = lab_before()["results"]
         finding_rows = sum(len(b["server"][c["id"]]["rows"]) for c in SERVER_CHECKS
                            if c["severity"] != "info" and c["id"] in b["server"])
-        finding_rows += sum(len(b["db"]["DemoShop"][c["id"]]["rows"]) for c in DB_CHECKS if c["severity"] != "info")
+        finding_rows += sum(len(b["db"]["DemoShop"][c["id"]]["rows"]) for c in DB_CHECKS
+                            if c["severity"] != "info" and c["id"] in b["db"]["DemoShop"])
         self.assertEqual(diff["counts"]["unchanged"], finding_rows - 3)
         self.assertNotIn("S21", {x["check"] for x in diff["items"]})
+        # The fixture also predates D07/D08: a check absent from both runs adds no item.
+        self.assertFalse({"D07", "D08"} & {x["check"] for x in diff["items"]})
 
     def test_check_missing_from_one_run_is_unknown(self):
         after = lab_after()

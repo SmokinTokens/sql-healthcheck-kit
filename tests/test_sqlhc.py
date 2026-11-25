@@ -161,7 +161,7 @@ class ReportTests(unittest.TestCase):
     def test_every_check_has_one_impact_line(self):
         ids = {c["id"] for c in SERVER_CHECKS + DB_CHECKS}
         self.assertEqual(set(IMPACT), ids)
-        self.assertEqual(len(IMPACT), 25)
+        self.assertEqual(len(IMPACT), 27)
         for cid, text in IMPACT.items():
             self.assertTrue(text.endswith("."), cid)
             self.assertNotIn("\n", text, cid)
@@ -710,6 +710,61 @@ class GrantReaderScriptTests(unittest.TestCase):
         with open(seed, encoding="utf-8") as f:
             seed_code = "\n".join(l.split("--", 1)[0] for l in f.read().splitlines())
         self.assertNotIn("sp_executesql", seed_code.lower())
+
+
+class OrphanGuestTests(unittest.TestCase):
+    """D07 orphaned users + D08 guest CONNECT. Offline proof; lab proof in lab/assert-security.py."""
+    D07 = next(c for c in DB_CHECKS if c["id"] == "D07")
+    D08 = next(c for c in DB_CHECKS if c["id"] == "D08")
+
+    def test_shape_and_guard(self):
+        for c, sev, n in ((self.D07, "low", 2), (self.D08, "medium", 2)):
+            guard(c["sql"])
+            self.assertEqual(c["severity"], sev)
+            self.assertEqual(c["area"], "Security")
+            self.assertTrue(c["fix"])
+            self.assertEqual(len(c["cols"]), n)
+            self.assertIn(c["id"], IMPACT)
+            # Per-database checks only: never in the server list.
+            self.assertNotIn(c["id"], {s["id"] for s in SERVER_CHECKS})
+
+    def test_d07_matches_microsoft_learn_orphan_query(self):
+        sql = self.D07["sql"]
+        self.assertEqual(set(re.findall(r"\bsys\.\w+", sql)), {"sys.database_principals", "sys.server_principals"})
+        self.assertIn("LEFT JOIN sys.server_principals sp ON sp.sid = dp.sid", sql)
+        self.assertIn("WHERE sp.sid IS NULL AND dp.authentication_type_desc = 'INSTANCE'", sql)
+        self.assertIn("TOP (50)", sql)
+
+    def test_d08_reads_database_level_connect_grants_for_guest_only(self):
+        sql = self.D08["sql"]
+        self.assertEqual(set(re.findall(r"\bsys\.\w+", sql)), {"sys.database_permissions", "sys.database_principals"})
+        # class 0 = DATABASE, CO = CONNECT, G/W = granted (with or without grant option); DENY excluded.
+        self.assertIn("p.class = 0 AND p.type = 'CO' AND p.state IN ('G', 'W')", sql)
+        # guest is principal_id 2: no name compare, so a CS collation cannot miss it.
+        self.assertIn("p.grantee_principal_id = 2", sql)
+        self.assertNotIn("'guest'", sql)
+
+    def test_lab_output_parses(self):
+        d = [0]
+        out = "legacy_orphan\x1fSQL_USER\n\n(1 rows affected)\n"
+        self.assertEqual(rows_of(out, 2, d), [["legacy_orphan", "SQL_USER"]])
+        self.assertEqual(d[0], 0)
+        out = "guest\x1fGRANT\n\n(1 rows affected)\n"
+        self.assertEqual(rows_of(out, 2, d), [["guest", "GRANT"]])
+
+    def test_findings_render_per_database(self):
+        server = {c["id"]: {"rows": []} for c in SERVER_CHECKS}
+        server["S01"] = {"rows": [["16.0.1", "RTM", "Developer", "4", "8000", "300"]]}
+        db = {c["id"]: {"rows": []} for c in DB_CHECKS}
+        db["D07"] = {"rows": [["legacy_orphan", "SQL_USER"]]}
+        db["D08"] = {"rows": [["guest", "GRANT"]]}
+        data = {"started": "2026-01-01T00:00:00", "secs": 1.0, "probe": {}, "powerful": [],
+                "dbs": ["Shop"], "skipped_dbs": [], "results": {"server": server, "db": {"Shop": db}},
+                "full_query_text": False}
+        self.assertEqual([(f[0]["id"], f[1]) for f in findings_of(data)], [("D08", "Shop"), ("D07", "Shop")])
+        md, counts, _ = render_markdown(data)
+        self.assertEqual(counts, {"high": 0, "medium": 1, "low": 1})
+        self.assertIn("legacy\\_orphan", md)
 
 
 class CaseSensitiveCollationTests(unittest.TestCase):
