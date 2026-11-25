@@ -61,6 +61,7 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 | D01 | Large heaps | medium |
 | D02 | Duplicate indexes | medium |
 | D08 | `guest` user can connect (CONNECT granted) in a user database | medium |
+| D10 | Log space held: `log_reuse_wait_desc` is not `NOTHING` or `CHECKPOINT` | medium |
 | S06 | Percent-based file growth | low |
 | S10 | `sa` login enabled | low |
 | S11 | tempdb data files vs CPUs | low |
@@ -69,6 +70,7 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 | D04 | Untrusted foreign keys / check constraints | low |
 | D05 | Write-only indexes | low |
 | D07 | Orphaned database users: login-based users with no matching login (top 50) | low |
+| D09 | More than 1,000 virtual log files (VLFs) in the transaction log | low |
 | S01, S12, S14, D06 | Inventory, top waits, top queries by CPU (redacted), file sizes | context |
 
 The report also warns when uptime is under 7 days (DMV stats reset at restart) and when
@@ -137,6 +139,19 @@ D08 lists a database-level `CONNECT` grant to `guest` (principal id 2). Microsof
 best-practice rule is to revoke it in user databases unless it is needed
 ([Guest permissions on user databases](https://learn.microsoft.com/sql/relational-databases/policy-based-management/guest-permissions-on-user-databases)).
 `master`, `msdb` and `tempdb` need guest, so the kit does not check system databases here.
+D09 and D10 look at each user database's transaction log. D09 counts rows of
+[`sys.dm_db_log_info`](https://learn.microsoft.com/sql/relational-databases/system-dynamic-management-views/sys-dm-db-log-info-transact-sql)
+(one row per VLF; SQL Server 2016 SP2 and later; `VIEW SERVER STATE`, or
+`VIEW DATABASE PERFORMANCE STATE` on SQL Server 2022 and later) and flags more than 1,000.
+Many VLFs come from many small log growths and can slow startup, restore and backup. SQL
+Server itself only logs
+[error 9017](https://learn.microsoft.com/sql/relational-databases/errors-events/mssqlserver-9017-database-engine-error)
+at 10,000 VLFs (2012 and later), so 1,000 is this kit's earlier warning, not a Microsoft limit.
+D10 reads `log_reuse_wait_desc` from `sys.databases` and flags any value other than
+`NOTHING` or `CHECKPOINT`, which Microsoft describes as routine
+([Factors that can delay log truncation](https://learn.microsoft.com/sql/relational-databases/logs/the-transaction-log-sql-server#factors-that-can-delay-log-truncation)).
+It is a snapshot: a short `ACTIVE_TRANSACTION` or `LOG_SCAN` can be normal, so run it again
+before acting. A FULL-recovery database without log backups shows `LOG_BACKUP` here and in S03.
 
 ## Quick start
 
@@ -224,8 +239,9 @@ history. Check the job's next runs instead. The tool reads two files; it never c
 
 ## What it does not check (yet)
 
-VLF counts, last good CHECKDB on servers older than SQL Server 2016 SP2 (S23 shows
-`UNKNOWN` there; the old way needs `DBCC DBINFO`), SQL Agent failure messages (left out
+VLF counts on servers older than SQL Server 2016 SP2 (D09 then errors: `sys.dm_db_log_info`
+does not exist there; the old way needs `DBCC LOGINFO`), last good CHECKDB on servers older
+than SQL Server 2016 SP2 (S23 shows `UNKNOWN` there; the old way needs `DBCC DBINFO`), SQL Agent failure messages (left out
 on purpose), I/O latency over a short window (S21 shows averages
 since startup only; a two-snapshot delta needs `WAITFOR`, which the guard refuses).
 Pull requests welcome, as long as every new check stays a single read-only `SELECT`.
@@ -247,7 +263,7 @@ What is different here:
 | | This kit | First Responder Kit |
 |---|---|---|
 | Install on the server | Nothing. Queries are sent from the client | Stored procedures, usually in `master` |
-| Checks | 27 single `SELECT` checks | Hundreds of checks across several procedures |
+| Checks | 29 single `SELECT` checks | Hundreds of checks across several procedures |
 | Login | Least-privilege reader; refuses to run as sysadmin or any write-capable login | Not restricted; some checks need high rights (e.g. trace-flag checks via `DBCC TRACESTATUS`) |
 | Output | One Markdown report, one self-contained HTML report, and JSON | Result sets in SSMS, optional output tables |
 | Query text | Literals redacted by default | Full query text and plans |

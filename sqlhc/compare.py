@@ -42,6 +42,9 @@ KEY_COLS = {
     "D04": ["table", "constraint"], "D05": ["table", "index"], "S21": ["database", "file"],
     "S22": ["database", "file_id", "page_id"], "S23": ["database"],
     "S24": ["job"], "S25": ["job"], "D07": ["user"], "D08": [],
+    # D09/D10 return at most one row per database: a new VLF count or wait reason
+    # is a changed detail, not a fix plus a new finding.
+    "D09": [], "D10": [],
 }
 # Checks that return only the top N rows. An item missing from a full top-N list may
 # just have been ranked out, so it is unknown, not fixed.

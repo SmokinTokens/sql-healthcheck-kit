@@ -24,7 +24,8 @@ randpw() { python3 -c 'import secrets; print("Lab-" + secrets.token_urlsafe(18) 
 export MSSQL_SA_PASSWORD="$(randpw)"
 export HC_PW="$(randpw)"
 
-$DOCKER run -d --name "$NAME" -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD "$IMAGE" >/dev/null
+# --pull=never: use only an image already on this host; never pull during a lab run.
+$DOCKER run -d --pull=never --name "$NAME" -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD "$IMAGE" >/dev/null
 echo "started $NAME; waiting for SQL Server"
 for _ in $(seq 1 60); do
   if SQLCMDPASSWORD="$MSSQL_SA_PASSWORD" $DOCKER exec -e SQLCMDPASSWORD "$NAME" \
@@ -42,6 +43,7 @@ as_sa() {  # $1 = sql file; fed on stdin, output withheld (failed batches can ec
   echo "ok: $(basename "$1")"
 }
 as_sa "$HERE/seed-demo.sql"
+as_sa "$HERE/seed-tlog.sql"
 as_sa "$ROOT/sql/grant-reader.sql"
 as_sa "$HERE/workload.sql"
 
@@ -75,3 +77,6 @@ python3 "$HERE/assert-integrity.py" "$OUT/results.json"
 
 # Proof 4: the reader login finds the planted orphaned user and guest CONNECT (D07, D08).
 python3 "$HERE/assert-security.py" "$OUT/results.json"
+
+# Proof 5: the reader login can read the transaction-log sources (D09 VLFs, D10 reuse wait).
+python3 "$HERE/assert-tlog.py" "$OUT/results.json"
