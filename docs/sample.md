@@ -1,6 +1,6 @@
 # SQL Server Health Check (sample, demo data)
 
-- Run: 2026-01-15T09:00:00, 2.3 s, 19 instance checks + 10 per-database checks over 1 user database(s).
+- Run: 2026-01-15T09:00:00, 2.3 s, 21 instance checks + 10 per-database checks over 1 user database(s).
 - Server: SQL Server 16.0.4305.5 RTM, Developer Edition \(64\-bit\), 4 CPUs, 16384 MB RAM, up 0 h.
 - Access: catalog views and DMVs only, sent as SELECT statements. No user table rows read; no data or settings changed.
 - Query text: literals redacted (strings, numbers, hex replaced with ?).
@@ -16,9 +16,9 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 
 ## Summary
 
-**4 high, 10 medium, 6 low** findings.
+**4 high, 11 medium, 7 low** findings.
 
-- **HIGH** S02 Databases without a recent full backup (7 days) - \(instance\): 3 item(s)
+- **HIGH** S02 Databases without a recent full backup (7 days) - \(instance\): 1 item(s)
 - **HIGH** S03 FULL recovery databases without log backups (24 h) - \(instance\): 1 item(s)
 - **HIGH** S04 Risky database options - \(instance\): 1 item(s)
 - **HIGH** S22 Suspect pages (823/824 errors) in msdb.dbo.suspect_pages - \(instance\): 1 item(s)
@@ -32,12 +32,14 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 - **MEDIUM** S09 SQL logins with password policy off - \(instance\): 1 item(s)
 - **MEDIUM** S13 Top missing-index requests - \(instance\): 1 item(s)
 - **MEDIUM** S23 DBCC CHECKDB overdue or unverifiable (7 days) - \(instance\): 3 item(s)
+- **MEDIUM** S26 Last full backup without CHECKSUM, damaged, or copy-only only - \(instance\): 2 item(s)
 - **LOW** D03 Left-prefix overlapping indexes - DemoShop: 2 item(s)
 - **LOW** D04 Untrusted foreign keys / check constraints - DemoShop: 1 item(s)
 - **LOW** D05 Write-only indexes (writes, no reads since startup) - DemoShop: 2 item(s)
 - **LOW** D07 Orphaned database users (no matching login) - DemoShop: 1 item(s)
 - **LOW** S06 Percent-based file growth - \(instance\): 5 item(s)
 - **LOW** S10 'sa' login enabled - \(instance\): 1 item(s)
+- **LOW** S27 Last full backup: native backup encryption not recorded - \(instance\): 3 item(s)
 
 ## Findings
 
@@ -46,8 +48,6 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 | database | recovery_model | last_full |
 |---|---|---|
 | model | FULL | NEVER |
-| master | SIMPLE | NEVER |
-| msdb | SIMPLE | NEVER |
 
 **Fix:** Schedule full backups (weekly or nightly) and test a restore. System databases (master, msdb, model) need backups too.
 
@@ -164,6 +164,15 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 
 **Fix:** Schedule DBCC CHECKDB at least weekly for every database, system databases included (for example Ola Hallengren's DatabaseIntegrityCheck), and alert on failure. Run it off-peak: it uses tempdb and I/O. UNKNOWN means the date could not be read (the property returned NULL); a server older than SQL Server 2016 SP2 / 2017 CU9 is one cause. Check the date there with a DBA login.
 
+### S26 [MEDIUM] Last full backup without CHECKSUM, damaged, or copy-only only (Recoverability, \(instance\))
+
+| database | last_full | issues |
+|---|---|---|
+| DemoShop | 2026\-01\-15 08:58:12 | no CHECKSUM;  |
+| msdb | 2026\-01\-15 08:58:14 | copy\-only fulls only;  |
+
+**Fix:** Take full backups WITH CHECKSUM (or turn on the 'backup checksum default' server option) so the backup verifies page checksums and records a backup checksum. With the default STOP_ON_ERROR a bad page stops the backup; CONTINUE_AFTER_ERROR lets it finish and marks it damaged. Checksums do not prove a backup restores: test a restore. A DAMAGED backup was taken despite errors: run DBCC CHECKDB and take a clean full. 'Copy-only fulls only' means no regular full is on record here: first check the real backup strategy with its owner (another tool may take the regular fulls). A new regular full resets the differential base for later differential backups, so do not add one without that check. 'No full since recreated or restored' means every full on record belongs to an older copy of the database: take a new full backup now. 'History unknown' means no full matches the current copy and some fulls on record have no database_guid, so this server cannot tell which copy they belong to: confirm a current full exists another way.
+
 ### D03 [LOW] Left-prefix overlapping indexes (Schema, DemoShop)
 
 | table | narrower_index | covered_by |
@@ -217,6 +226,16 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 | sa |
 
 **Fix:** Disable sa once named admin logins exist. A disabled login can still be impersonated, so also review IMPERSONATE grants.
+
+### S27 [LOW] Last full backup: native backup encryption not recorded (Security, \(instance\))
+
+| database | last_full |
+|---|---|
+| DemoShop | 2026\-01\-15 08:58:12 |
+| master | 2026\-01\-15 08:58:13 |
+| msdb | 2026\-01\-15 08:58:14 |
+
+**Fix:** msdb records no native backup encryption for this backup. It may still be protected another way: TDE that was on when it was taken (backup history cannot show this), encrypted storage, or a backup tool that encrypts. Verify how the backup files are protected before changing anything. If they are not protected, anyone who gets a copy of a file can restore it and read the data: encrypt backups (BACKUP ... WITH ENCRYPTION, using a certificate or asymmetric key) or use TDE, and back up that certificate and its private key to a separate safe place: without it the backup cannot be restored.
 
 ## Context (no action implied)
 

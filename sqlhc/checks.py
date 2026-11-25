@@ -50,6 +50,100 @@ HAVING MAX(b.backup_finish_date) IS NULL OR MAX(b.backup_finish_date) < DATEADD(
         "fix": "Add log backups (Microsoft suggests every 15-30 min as a start, more often to lose less data), or switch to SIMPLE if point-in-time restore is not needed. Until then the log keeps growing.",
     },
     {
+        # Quality of the most recent full backup (type 'D', copy-only included) per online
+        # database, from msdb.dbo.backupset bit columns: has_backup_checksums, is_damaged,
+        # is_copy_only. BACKUP defaults to NO_CHECKSUM, except for compressed backups or when
+        # the 'backup checksum default' server option is on.
+        # A copy-only full cannot be a differential base, so "copy-only fulls only" means no
+        # regular full is on record. Databases with no full of any copy at all are S02's job.
+        # History rows are matched by name AND the current database_guid (sys.database_recovery_status),
+        # so a dropped-and-recreated database never inherits an older namesake's backups. Only retained
+        # fulls matching the current name and database_guid count; a restore that changes the GUID
+        # excludes earlier history. S02 matches by name only, so when the only fulls on record belong
+        # to an older copy (other non-NULL GUID), S26 reports 'no full since recreated or restored'
+        # instead. A NULL backupset.database_guid is unknown provenance, not proof of an older copy:
+        # when no current-copy full exists and any NULL-GUID full is on record (alone or mixed with
+        # older-copy fulls), S26 reports 'history unknown' with last_full 'UNKNOWN'.
+        # backup_set_id breaks ties between equal finish times (datetime is not unique).
+        # sys.database_recovery_status rows need VIEW ANY DATABASE (granted to public by default);
+        # if it is revoked the checks return no rows, so the lab proof gate fails rather than passes.
+        # https://learn.microsoft.com/sql/relational-databases/system-tables/backupset-transact-sql
+        # https://learn.microsoft.com/sql/relational-databases/system-catalog-views/sys-database-recovery-status-transact-sql
+        # https://learn.microsoft.com/sql/t-sql/statements/backup-transact-sql
+        # https://learn.microsoft.com/sql/relational-databases/backup-restore/copy-only-backups-sql-server
+        "id": "S26", "title": "Last full backup without CHECKSUM, damaged, or copy-only only", "area": "Recoverability",
+        "sql": """SELECT d.name, ISNULL(CONVERT(varchar(19), f.backup_finish_date, 120),
+   CASE WHEN n.backup_set_id IS NULL THEN 'NONE FOR THIS COPY' ELSE 'UNKNOWN' END),
+ CASE WHEN f.backup_set_id IS NULL AND n.backup_set_id IS NOT NULL
+   THEN 'some fulls on record have no database_guid (history unknown); '
+ WHEN f.backup_set_id IS NULL THEN 'no full since recreated or restored; '
+ ELSE CONCAT(CASE WHEN f.is_damaged = 1 THEN 'DAMAGED (taken despite errors); ' ELSE '' END,
+        CASE WHEN ISNULL(f.has_backup_checksums, 0) = 0 THEN 'no CHECKSUM; ' ELSE '' END,
+        CASE WHEN r.backup_set_id IS NULL THEN 'copy-only fulls only; ' ELSE '' END) END
+FROM sys.databases d
+JOIN sys.database_recovery_status rs ON rs.database_id = d.database_id AND rs.database_guid IS NOT NULL
+OUTER APPLY (SELECT TOP (1) b.backup_set_id, b.backup_finish_date, b.has_backup_checksums, b.is_damaged
+ FROM msdb.dbo.backupset b
+ WHERE b.database_name = d.name AND b.database_guid = rs.database_guid AND b.type = 'D'
+ ORDER BY b.backup_finish_date DESC, b.backup_set_id DESC) f
+OUTER APPLY (SELECT TOP (1) b2.backup_set_id FROM msdb.dbo.backupset b2
+ WHERE b2.database_name = d.name AND b2.database_guid = rs.database_guid AND b2.type = 'D'
+   AND b2.is_copy_only = 0) r
+OUTER APPLY (SELECT TOP (1) b3.backup_set_id FROM msdb.dbo.backupset b3
+ WHERE b3.database_name = d.name AND b3.type = 'D'
+   AND b3.database_guid IS NOT NULL AND b3.database_guid <> rs.database_guid) o
+OUTER APPLY (SELECT TOP (1) b4.backup_set_id FROM msdb.dbo.backupset b4
+ WHERE b4.database_name = d.name AND b4.type = 'D' AND b4.database_guid IS NULL) n
+WHERE d.name <> 'tempdb' AND d.state = 0
+  AND ((f.backup_set_id IS NOT NULL
+        AND (ISNULL(f.has_backup_checksums, 0) = 0 OR f.is_damaged = 1 OR r.backup_set_id IS NULL))
+       OR (f.backup_set_id IS NULL AND (o.backup_set_id IS NOT NULL OR n.backup_set_id IS NOT NULL)))""",
+        "cols": ["database", "last_full", "issues"], "severity": "medium",
+        "fix": "Take full backups WITH CHECKSUM (or turn on the 'backup checksum default' server option) so "
+               "the backup verifies page checksums and records a backup checksum. With the default "
+               "STOP_ON_ERROR a bad page stops the backup; CONTINUE_AFTER_ERROR lets it finish and marks it "
+               "damaged. Checksums do not prove a backup restores: test a restore. A DAMAGED backup was "
+               "taken despite errors: run DBCC CHECKDB and take a clean full. 'Copy-only fulls only' means "
+               "no regular full is on record here: first check the real backup strategy with its owner "
+               "(another tool may take the regular fulls). A new regular full resets the differential base "
+               "for later differential backups, so do not add one without that check. 'No full since "
+               "recreated or restored' means every full on record belongs to an older copy of the "
+               "database: take a new full backup now. 'History unknown' means no full matches the current "
+               "copy and some fulls on record have no database_guid, so this server cannot tell which copy "
+               "they belong to: confirm a current full exists another way.",
+    },
+    {
+        # The most recent full backup has no native backup encryption recorded in msdb:
+        # encryptor_type is NULL and key_algorithm is NULL or NO_Encryption. Only these
+        # backup-bound columns are used. The database's CURRENT TDE state (sys.databases.
+        # is_encrypted) says nothing about a backup taken earlier, and backupset records no TDE
+        # state, so TDE protection of a historical backup cannot be proved here and is not used.
+        # Express and Web editions cannot encrypt backups, so they are left out to avoid a
+        # finding with no fix. Same current-incarnation match and tie-break as S26.
+        # https://learn.microsoft.com/sql/relational-databases/system-tables/backupset-transact-sql
+        # https://learn.microsoft.com/sql/relational-databases/backup-restore/backup-encryption
+        "id": "S27", "title": "Last full backup: native backup encryption not recorded", "area": "Security",
+        "sql": """SELECT d.name, CONVERT(varchar(19), f.backup_finish_date, 120)
+FROM sys.databases d
+JOIN sys.database_recovery_status rs ON rs.database_id = d.database_id AND rs.database_guid IS NOT NULL
+CROSS APPLY (SELECT TOP (1) b.backup_finish_date, b.encryptor_type, b.key_algorithm
+ FROM msdb.dbo.backupset b
+ WHERE b.database_name = d.name AND b.database_guid = rs.database_guid AND b.type = 'D'
+ ORDER BY b.backup_finish_date DESC, b.backup_set_id DESC) f
+WHERE d.name <> 'tempdb' AND d.state = 0 AND f.encryptor_type IS NULL
+  AND UPPER(ISNULL(f.key_algorithm, N'NO_ENCRYPTION')) = N'NO_ENCRYPTION'
+  AND CAST(SERVERPROPERTY('Edition') AS nvarchar(128)) NOT LIKE N'Express%'
+  AND CAST(SERVERPROPERTY('Edition') AS nvarchar(128)) NOT LIKE N'Web%'""",
+        "cols": ["database", "last_full"], "severity": "low",
+        "fix": "msdb records no native backup encryption for this backup. It may still be protected another "
+               "way: TDE that was on when it was taken (backup history cannot show this), encrypted storage, "
+               "or a backup tool that encrypts. Verify how the backup files are protected before changing "
+               "anything. If they are not protected, anyone who gets a copy of a file can restore it and read "
+               "the data: encrypt backups (BACKUP ... WITH ENCRYPTION, using a certificate or asymmetric key) "
+               "or use TDE, and back up that certificate and its private key to a separate safe place: "
+               "without it the backup cannot be restored.",
+    },
+    {
         "id": "S04", "title": "Risky database options", "area": "Configuration",
         "sql": """SELECT name,
  CONCAT(CASE WHEN is_auto_shrink_on = 1 THEN 'AUTO_SHRINK ON; ' ELSE '' END,

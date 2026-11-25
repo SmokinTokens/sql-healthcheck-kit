@@ -45,6 +45,7 @@ KEY_COLS = {
     # D09/D10 return at most one row per database: a new VLF count or wait reason
     # is a changed detail, not a fix plus a new finding.
     "D09": [], "D10": [],
+    "S26": ["database"], "S27": ["database"],
 }
 # Checks that return only the top N rows. An item missing from a full top-N list may
 # just have been ranked out, so it is unknown, not fixed.
@@ -61,6 +62,11 @@ STATE_FREE_CHECKS = {"S06"}
 # 1,000 rows / 100 per job by default). A row that drops out may only have aged out of
 # the window or been deleted, so it is unknown, never fixed.
 WINDOWED = {"S24": "after: failure may only have left the 7-day window or been purged from Agent history"}
+# S26/S27 judge the latest full in msdb history. A row that drops out may mean a better
+# full was taken, or only that history was purged or the database was restored (new
+# database_guid). The run cannot tell these apart, so the row is unknown, never fixed.
+_BACKUP_HISTORY = "after: backup history may have been purged or the database restored; confirm a new full backup"
+WINDOWED.update({"S26": _BACKUP_HISTORY, "S27": _BACKUP_HISTORY})
 STATUSES = ("new", "fixed", "changed", "unchanged", "unknown")
 # Checks whose row names an unordered pair: (IX_A, IX_B) and (IX_B, IX_A) are the
 # same finding. D02 orders the pair by index_id, which a drop/recreate can flip.

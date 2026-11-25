@@ -28,6 +28,8 @@ IMPACT = {
     "S01": "This is the server's basic inventory and shows no risk by itself.",
     "S02": "For the listed databases, this server's backup history shows no full backup in the last 7 days, so a disk failure or mistake could lose data unless backups are kept another way; confirm coverage with a test restore.",
     "S03": "For the listed databases, this server's backup history shows no log backup in the last 24 hours, so a failure could lose recent work and the log file may keep growing; confirm actual backup coverage.",
+    "S26": "These databases' latest full lacks checksums or is damaged, has only copy-only fulls, or cannot be matched to the current copy, so a restore may hide damage or fall short; check the plan with its owner first.",
+    "S27": "History shows no native encryption on these databases' latest full; unless protected another way, anyone with a copy could read it, so verify how they are protected before changing anything.",
     "S04": "These settings can let disk corruption go unnoticed, slow the server down without warning, or let database code gain more rights than intended.",
     "S05": "The databases run on an older query engine level, so they may miss newer query improvements, and a delayed upgrade can carry more risk of slow queries.",
     "S06": "Files set to grow by a percentage can take larger and larger growth steps as they get bigger, which may pause the application while each step is allocated.",
