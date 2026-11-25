@@ -103,14 +103,16 @@ WHERE d.name <> 'tempdb' AND d.state = 0
                "the backup verifies page checksums and records a backup checksum. With the default "
                "STOP_ON_ERROR a bad page stops the backup; CONTINUE_AFTER_ERROR lets it finish and marks it "
                "damaged. Checksums do not prove a backup restores: test a restore. A DAMAGED backup was "
-               "taken despite errors: run DBCC CHECKDB and take a clean full. 'Copy-only fulls only' means "
+               "taken despite errors: run DBCC CHECKDB, then plan a clean full with the backup owner (see below). 'Copy-only fulls only' means "
                "no regular full is on record here: first check the real backup strategy with its owner "
                "(another tool may take the regular fulls). A new regular full resets the differential base "
                "for later differential backups, so do not add one without that check. 'No full since "
                "recreated or restored' means every full on record belongs to an older copy of the "
-               "database: take a new full backup now. 'History unknown' means no full matches the current "
+               "database: check with the backup owner, then plan a new full (see below). 'History unknown' means no full matches the current "
                "copy and some fulls on record have no database_guid, so this server cannot tell which copy "
-               "they belong to: confirm a current full exists another way.",
+               "they belong to: confirm a current full exists another way. Before taking ANY new regular full, "
+               "check the backup strategy with its owner: it becomes the base for later differential "
+               "backups, so it must be kept in the same retained restore chain (or use COPY_ONLY).",
     },
     {
         # The most recent full backup has no native backup encryption recorded in msdb:

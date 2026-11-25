@@ -1053,3 +1053,14 @@ class OrphanCheckSafetyTests(unittest.TestCase):
         self.assertIn("leave it in place", fix)
         for word in ("schema itself", "denies", "grant options", "restores them"):
             self.assertIn(word, fix)
+
+class S26AdviceSafetyTests(unittest.TestCase):
+    """Every S26 new-full recommendation goes through the backup owner first."""
+
+    def test_s26_no_unconditional_new_full(self):
+        chk = next(c for c in SERVER_CHECKS if c["id"] == "S26")
+        fix = chk["fix"].lower()
+        self.assertNotIn("take a new full backup now", fix)
+        self.assertNotIn("take a clean full", fix)
+        self.assertIn("before taking any new regular full", fix)
+        self.assertIn("differential", fix)
