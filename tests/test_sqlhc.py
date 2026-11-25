@@ -816,8 +816,7 @@ class OrphanCheckSafetyTests(unittest.TestCase):
         chk = next(c for c in DB_CHECKS if c["id"] == "D07")
         fix = chk["fix"].lower()
         self.assertNotIn("drop any schema", fix)
-        self.assertNotIn("move or drop", fix)
-        self.assertIn("alter authorization on schema", fix)
-        self.assertIn("never drop its schemas", fix)
-        self.assertIn("drops permissions", fix)
-        self.assertLess(fix.index("check what depends"), fix.index("alter authorization on schema"))
+        self.assertIn("owns no schema", fix)
+        self.assertIn("leave it in place", fix)
+        for word in ("schema itself", "denies", "grant options", "restores them"):
+            self.assertIn(word, fix)
