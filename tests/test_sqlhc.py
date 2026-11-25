@@ -819,3 +819,5 @@ class OrphanCheckSafetyTests(unittest.TestCase):
         self.assertNotIn("move or drop", fix)
         self.assertIn("alter authorization on schema", fix)
         self.assertIn("never drop its schemas", fix)
+        self.assertIn("drops permissions", fix)
+        self.assertLess(fix.index("check what depends"), fix.index("alter authorization on schema"))

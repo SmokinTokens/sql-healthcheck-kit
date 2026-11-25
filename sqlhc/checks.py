@@ -370,11 +370,14 @@ WHERE sp.sid IS NULL AND dp.authentication_type_desc = 'INSTANCE'
 ORDER BY dp.name""",
         "cols": ["user", "type"], "severity": "low",
         "fix": "For each user, map it to the right login with ALTER USER <user> WITH LOGIN = <login>. "
-               "If nobody needs it, first move ownership of any schema it owns to an existing principal "
-               "(ALTER AUTHORIZATION ON SCHEMA::<schema> TO <owner>) and check what depends on it, then drop "
-               "the user. Never drop its schemas, tables or other objects as part of this cleanup. Do not "
-               "use the deprecated sp_change_users_login. Built-in users (dbo, guest, INFORMATION_SCHEMA, sys) "
-               "are not listed. Windows users are not listed (they can still get in through a Windows group login).",
+               "If nobody needs it, first check what depends on it and list the grants on the objects in "
+               "any schema it owns: changing a schema owner (ALTER AUTHORIZATION ON SCHEMA::<schema> TO <owner>) "
+               "drops permissions on objects in that schema that have no explicit owner, which can break "
+               "applications. Plan the change in a tested change window and reapply the grants that are still "
+               "needed, then drop the user. Never drop its schemas, tables or other objects as part of this "
+               "cleanup. Do not use the deprecated sp_change_users_login. Built-in users (dbo, guest, "
+               "INFORMATION_SCHEMA, sys) are not listed. Windows users are not listed (they can still get in "
+               "through a Windows group login).",
     },
     {
         # guest with CONNECT lets every login without its own user enter the database as guest.

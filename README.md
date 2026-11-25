@@ -127,8 +127,11 @@ Contained users and users without a login are not orphans and are skipped. Built
 before changing anything. Windows users
 are skipped too, as in Microsoft's query: they can still connect through a Windows group
 login. Fix with `ALTER USER ... WITH LOGIN`, not the deprecated `sp_change_users_login`.
-Before dropping an unused user, move ownership of its schemas to an existing principal and
-check dependencies; never drop its schemas or objects as part of this cleanup.
+Before dropping an unused user, check what depends on it and list the grants in any schema it
+owns. Changing a schema owner drops permissions on objects in that schema that have no explicit
+owner ([ALTER AUTHORIZATION](https://learn.microsoft.com/sql/t-sql/statements/alter-authorization-transact-sql#special-cases-and-conditions)),
+so do it in a tested change window and reapply the grants still needed. Never drop its schemas
+or objects as part of this cleanup.
 D08 lists a database-level `CONNECT` grant to `guest` (principal id 2). Microsoft's
 best-practice rule is to revoke it in user databases unless it is needed
 ([Guest permissions on user databases](https://learn.microsoft.com/sql/relational-databases/policy-based-management/guest-permissions-on-user-databases)).
