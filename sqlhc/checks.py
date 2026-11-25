@@ -394,6 +394,48 @@ WHERE p.class = 0 AND p.type = 'CO' AND p.state IN ('G', 'W') AND p.grantee_prin
                "databases), after you confirm no application relies on guest access. Logins that need "
                "the database then get their own database user and roles.",
     },
+    {
+        # sys.dm_db_log_info: one row per virtual log file (VLF) of the current database
+        # (SQL Server 2016 SP2 and later). Needs VIEW SERVER STATE, or VIEW DATABASE
+        # PERFORMANCE STATE on SQL Server 2022+. Many VLFs, from many small log growths,
+        # slow startup, restore and backup. Microsoft logs error 9017 at 10,000 VLFs
+        # (2012+); this kit flags earlier, above 1,000, a common DBA rule of thumb.
+        # https://learn.microsoft.com/sql/relational-databases/system-dynamic-management-views/sys-dm-db-log-info-transact-sql
+        # https://learn.microsoft.com/sql/relational-databases/errors-events/mssqlserver-9017-database-engine-error
+        "id": "D09", "title": "Too many virtual log files (VLFs > 1000)", "area": "Configuration",
+        "sql": """SELECT COUNT(li.vlf_sequence_number), CAST(SUM(li.vlf_size_mb) AS decimal(12,1))
+FROM sys.dm_db_log_info(DB_ID()) li
+HAVING COUNT(li.vlf_sequence_number) > 1000""",
+        "cols": ["vlf_count", "log_mb"], "severity": "low",
+        "fix": "Plan this with the database owner as an approved maintenance change. Check first for "
+               "availability groups, log shipping, replication or mirroring, and keep the log-backup chain: "
+               "in FULL recovery take a normal log backup (never switch to SIMPLE just to shrink, which "
+               "breaks the chain); in SIMPLE run a CHECKPOINT. Then, in a quiet window, shrink the log file "
+               "and grow it back to the size it really needs in one or a few large steps "
+               "(ALTER DATABASE ... MODIFY FILE (NAME = ..., SIZE = ...)). Set a fixed growth in MB, not "
+               "a tiny or percent growth, so it does not come back. Check the VLF count again after.",
+    },
+    {
+        # sys.databases.log_reuse_wait_desc: why log space cannot be reused right now.
+        # NOTHING and CHECKPOINT are routine; any other value (LOG_BACKUP, ACTIVE_TRANSACTION,
+        # REPLICATION, AVAILABILITY_REPLICA, ...) can make the log grow until it is full
+        # (error 9002). It is a point-in-time value: a short ACTIVE_TRANSACTION can be normal.
+        # https://learn.microsoft.com/sql/relational-databases/logs/the-transaction-log-sql-server
+        "id": "D10", "title": "Log space held (log_reuse_wait_desc not NOTHING/CHECKPOINT)",
+        "area": "Recoverability",
+        "sql": """SELECT d.log_reuse_wait_desc, d.recovery_model_desc
+FROM sys.databases d
+WHERE d.database_id = DB_ID() AND d.log_reuse_wait_desc NOT IN ('NOTHING', 'CHECKPOINT')""",
+        "cols": ["log_reuse_wait", "recovery_model"], "severity": "medium",
+        "fix": "Act on the reason shown. LOG_BACKUP: schedule regular log backups (see S03). Switching to "
+               "SIMPLE recovery is a DBA decision for the whole recovery plan: it breaks the log-backup "
+               "chain and is not allowed with log shipping, availability groups or mirroring. ACTIVE_TRANSACTION: find the long open transaction "
+               "(sys.dm_tran_database_transactions) and have its owner commit or end it. REPLICATION or "
+               "AVAILABILITY_REPLICA: check that the log reader or secondary is running and caught up. "
+               "Short REPLICATION or AVAILABILITY_REPLICA waits, LOG_SCAN and DATABASE_SNAPSHOT_CREATION can be "
+               "normal. This is the reason recorded at the last checkpoint, not a measure of log pressure: "
+               "run the check again to see if the reason stays.",
+    },
 ]
 
 # Privilege probe: read-only functions only. The runner refuses to run when the

@@ -1,6 +1,6 @@
 # SQL Server Health Check (sample, demo data)
 
-- Run: 2026-01-15T09:00:00, 2.3 s, 19 instance checks + 8 per-database checks over 1 user database(s).
+- Run: 2026-01-15T09:00:00, 2.3 s, 19 instance checks + 10 per-database checks over 1 user database(s).
 - Server: SQL Server 16.0.4305.5 RTM, Developer Edition \(64\-bit\), 4 CPUs, 16384 MB RAM, up 0 h.
 - Access: catalog views and DMVs only, sent as SELECT statements. No user table rows read; no data or settings changed.
 - Query text: literals redacted (strings, numbers, hex replaced with ?).
@@ -16,7 +16,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 
 ## Summary
 
-**4 high, 9 medium, 6 low** findings.
+**4 high, 10 medium, 6 low** findings.
 
 - **HIGH** S02 Databases without a recent full backup (7 days) - \(instance\): 3 item(s)
 - **HIGH** S03 FULL recovery databases without log backups (24 h) - \(instance\): 1 item(s)
@@ -25,6 +25,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 - **MEDIUM** D01 Large heaps (tables without a clustered index) - DemoShop: 1 item(s)
 - **MEDIUM** D02 Duplicate indexes (same key columns) - DemoShop: 1 item(s)
 - **MEDIUM** D08 guest user can connect (CONNECT granted) - DemoShop: 1 item(s)
+- **MEDIUM** D10 Log space held (log_reuse_wait_desc not NOTHING/CHECKPOINT) - DemoShop: 1 item(s)
 - **MEDIUM** S05 Old compatibility level - \(instance\): 1 item(s)
 - **MEDIUM** S07 Instance settings left at defaults - \(instance\): 5 item(s)
 - **MEDIUM** S08 Sysadmin members (non-system) - \(instance\): 4 item(s)
@@ -97,6 +98,14 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 | guest | GRANT |
 
 **Fix:** Run REVOKE CONNECT FROM guest in this database (Microsoft's best-practice rule for user databases), after you confirm no application relies on guest access. Logins that need the database then get their own database user and roles.
+
+### D10 [MEDIUM] Log space held (log_reuse_wait_desc not NOTHING/CHECKPOINT) (Recoverability, DemoShop)
+
+| log_reuse_wait | recovery_model |
+|---|---|
+| LOG\_BACKUP | FULL |
+
+**Fix:** Act on the reason shown. LOG_BACKUP: schedule regular log backups (see S03). Switching to SIMPLE recovery is a DBA decision for the whole recovery plan: it breaks the log-backup chain and is not allowed with log shipping, availability groups or mirroring. ACTIVE_TRANSACTION: find the long open transaction (sys.dm_tran_database_transactions) and have its owner commit or end it. REPLICATION or AVAILABILITY_REPLICA: check that the log reader or secondary is running and caught up. Short REPLICATION or AVAILABILITY_REPLICA waits, LOG_SCAN and DATABASE_SNAPSHOT_CREATION can be normal. This is the reason recorded at the last checkpoint, not a measure of log pressure: run the check again to see if the reason stays.
 
 ### S05 [MEDIUM] Old compatibility level (Configuration, \(instance\))
 

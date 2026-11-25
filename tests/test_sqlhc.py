@@ -161,7 +161,7 @@ class ReportTests(unittest.TestCase):
     def test_every_check_has_one_impact_line(self):
         ids = {c["id"] for c in SERVER_CHECKS + DB_CHECKS}
         self.assertEqual(set(IMPACT), ids)
-        self.assertEqual(len(IMPACT), 27)
+        self.assertEqual(len(IMPACT), 29)
         for cid, text in IMPACT.items():
             self.assertTrue(text.endswith("."), cid)
             self.assertNotIn("\n", text, cid)
@@ -799,6 +799,62 @@ class CaseSensitiveCollationTests(unittest.TestCase):
         s08 = next(c for c in SERVER_CHECKS if c["id"] == "S08")
         guard(s08["sql"])
         self.assertIn("m.name COLLATE Latin1_General_CI_AS NOT LIKE 'NT SERVICE\\%'", s08["sql"])
+
+
+class TransactionLogCheckTests(unittest.TestCase):
+    """D09 (VLF count) and D10 (log_reuse_wait_desc): shape only; the lab proves the SQL runs."""
+
+    def chk(self, cid):
+        return next(c for c in DB_CHECKS if c["id"] == cid)
+
+    def test_d09_counts_vlfs_of_current_db_above_1000(self):
+        d09 = self.chk("D09")
+        guard(d09["sql"])
+        sql = " ".join(d09["sql"].split())
+        self.assertIn("FROM sys.dm_db_log_info(DB_ID())", sql)
+        self.assertIn("HAVING COUNT(li.vlf_sequence_number) > 1000", sql)
+        self.assertNotIn("COUNT(*)", sql)
+        self.assertEqual(d09["cols"], ["vlf_count", "log_mb"])
+        self.assertEqual(d09["severity"], "low")
+
+    def test_d10_ignores_routine_waits_only(self):
+        d10 = self.chk("D10")
+        guard(d10["sql"])
+        sql = " ".join(d10["sql"].split())
+        self.assertIn("d.database_id = DB_ID()", sql)
+        self.assertIn("NOT IN ('NOTHING', 'CHECKPOINT')", sql)
+        self.assertEqual(d10["cols"], ["log_reuse_wait", "recovery_model"])
+        self.assertEqual((d10["area"], d10["severity"]), ("Recoverability", "medium"))
+
+    def test_new_checks_sit_after_d06(self):
+        ids = [c["id"] for c in DB_CHECKS]
+        self.assertEqual(ids[ids.index("D06") + 1:], ["D07", "D08", "D09", "D10"])
+
+    def test_findings_and_summary_include_log_checks(self):
+        data = ReportTests().fake()
+        data["results"]["db"]["Shop"]["D09"] = {"rows": [["1203", "250.4"]]}
+        data["results"]["db"]["Shop"]["D10"] = {"rows": [["LOG_BACKUP", "FULL"]]}
+        ids = [f[0]["id"] for f in findings_of(data)]
+        self.assertIn("D09", ids)
+        self.assertIn("D10", ids)
+        top = [f[0]["id"] for f in top_findings(findings_of(data))]
+        self.assertEqual(top[0], "D10")    # Recoverability outranks Security and the rest
+        md, counts, errors = render_markdown(data)
+        self.assertEqual(errors, [])
+        self.assertEqual(counts, {"high": 1, "medium": 2, "low": 2})
+        self.assertIn(IMPACT["D10"], md)
+        self.assertIn("1203", md)
+
+    def test_compare_vlf_count_change_is_changed_not_fixed(self):
+        from sqlhc.compare import compare
+        before, after = ReportTests().fake(), ReportTests().fake()
+        before["results"]["db"]["Shop"]["D09"] = {"rows": [["1203", "250.4"]]}
+        after["results"]["db"]["Shop"]["D09"] = {"rows": [["1450", "300.0"]]}
+        items = [x for x in compare(before, after)["items"] if x["check"] == "D09"]
+        self.assertEqual([x["status"] for x in items], ["changed"])
+        after["results"]["db"]["Shop"]["D09"] = {"rows": []}
+        items = [x for x in compare(before, after)["items"] if x["check"] == "D09"]
+        self.assertEqual([x["status"] for x in items], ["fixed"])
 
 
 if __name__ == "__main__":
