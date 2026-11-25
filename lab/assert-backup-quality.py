@@ -1,7 +1,8 @@
 """LAB ONLY: check that S26/S27 ran as hc_reader and judged the planted backups correctly.
 
 lab/seed-demo.sql takes: a plain uncompressed DemoShop full (no CHECKSUM, last), a master
-full WITH CHECKSUM, and only a copy-only msdb full WITH CHECKSUM. None is encrypted.
+full WITH CHECKSUM, and only a copy-only msdb full WITH CHECKSUM; lab/seed-tlog.sql adds a plain
+LogSprawl full (no CHECKSUM). None is encrypted.
 
 Usage: python3 lab/assert-backup-quality.py OUT_DIR/results.json
 Exit 0 = proof holds; 1 = invalid input, a check errored or a planted control failed.
@@ -10,8 +11,8 @@ import datetime
 import json
 import sys
 
-EXPECT_S26 = {"DemoShop": "no CHECKSUM;", "msdb": "copy-only fulls only;"}
-EXPECT_S27 = {"DemoShop", "master", "msdb"}
+EXPECT_S26 = {"DemoShop": "no CHECKSUM;", "msdb": "copy-only fulls only;", "LogSprawl": "no CHECKSUM;"}
+EXPECT_S27 = {"DemoShop", "master", "msdb", "LogSprawl"}
 
 
 def main(path):
@@ -57,12 +58,12 @@ def main(path):
     s26 = {r[0]: r[2].strip() for r in server["S26"]["rows"]}
     # Isolated fixture: exactly these rows, exactly these issue labels.
     if s26 != EXPECT_S26:
-        print("FAIL: S26 did not list exactly DemoShop 'no CHECKSUM;' and msdb 'copy-only fulls only;' "
+        print("FAIL: S26 did not list exactly DemoShop 'no CHECKSUM;' and msdb 'copy-only fulls only;' and LogSprawl 'no CHECKSUM;' "
               "(master has a regular full WITH CHECKSUM; model has no full)")
         return 1
     s27 = {r[0]: r[1] for r in server["S27"]["rows"]}
     if set(s27) != EXPECT_S27:
-        print("FAIL: S27 did not list exactly the unencrypted fulls (DemoShop, master, msdb)")
+        print("FAIL: S27 did not list exactly the unencrypted fulls (DemoShop, master, msdb, LogSprawl)")
         return 1
     if any(s27[r[0]] != r[1] for r in server["S26"]["rows"]):
         print("FAIL: S26 and S27 disagree on which full backup is the latest")

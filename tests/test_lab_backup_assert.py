@@ -15,9 +15,10 @@ ab = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ab)
 
 GOOD = {"S26": {"rows": [["DemoShop", "2026-11-25 01:50:00", "no CHECKSUM; "],
-                         ["msdb", "2026-11-25 01:50:01", "copy-only fulls only; "]]},
+                         ["msdb", "2026-11-25 01:50:01", "copy-only fulls only; "],
+                         ["LogSprawl", "2026-11-25 01:50:02", "no CHECKSUM; "]]},
         "S27": {"rows": [["DemoShop", "2026-11-25 01:50:00"], ["master", "2026-11-25 01:50:00"],
-                         ["msdb", "2026-11-25 01:50:01"]]}}
+                         ["msdb", "2026-11-25 01:50:01"], ["LogSprawl", "2026-11-25 01:50:02"]]}}
 
 
 class AssertBackupQualityTests(unittest.TestCase):
