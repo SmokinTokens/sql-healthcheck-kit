@@ -78,5 +78,13 @@ python3 "$HERE/assert-integrity.py" "$OUT/results.json"
 # Proof 4: the reader login finds the planted orphaned user and guest CONNECT (D07, D08).
 python3 "$HERE/assert-security.py" "$OUT/results.json"
 
+# Log the REAL LogSprawl VLF count (read as sa, independent of D09) before proof 5, so a
+# seed shortfall can be told apart from a D09 query fault.
+VLFS=$(echo "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.dm_db_log_info(DB_ID('LogSprawl'));" |
+  SQLCMDPASSWORD="$MSSQL_SA_PASSWORD" $DOCKER exec -i -e SQLCMDPASSWORD "$NAME" \
+  $SQLCMD -S localhost -U sa -C -b -h -1 -W -i /dev/stdin 2>/dev/null | tr -d '[:space:]') || VLFS=""
+case "$VLFS" in ''|*[!0-9]*) echo "FAIL: could not read the LogSprawl VLF count as sa"; exit 1;; esac
+echo "ok: LogSprawl VLF count (sa, sys.dm_db_log_info) = $VLFS"
+
 # Proof 5: the reader login can read the transaction-log sources (D09 VLFs, D10 reuse wait).
 python3 "$HERE/assert-tlog.py" "$OUT/results.json"

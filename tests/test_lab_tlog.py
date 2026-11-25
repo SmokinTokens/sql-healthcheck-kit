@@ -83,5 +83,29 @@ class AssertTlogTests(unittest.TestCase):
             self.assertEqual(rc, 1, bad)
 
 
+class LabSeedContractTests(unittest.TestCase):
+    """Static contract for the D09 seed: loop on the real count, capped, loud, and logged."""
+
+    def read(self, *parts):
+        with open(os.path.join(ROOT, *parts), encoding="utf-8") as f:
+            return f.read()
+
+    def test_seed_loops_on_real_vlf_count_with_cap_and_loud_failure(self):
+        sql = self.read("lab", "seed-tlog.sql")
+        loop = sql.index("WHILE @vlfs <= 1000 AND @steps < ")
+        self.assertIn("sys.dm_db_log_info(DB_ID())", sql[loop:])   # re-measured inside the loop
+        self.assertIn("IF @vlfs <= 1000", sql[loop:])
+        self.assertIn("THROW 50010", sql[loop:])
+        self.assertIn("PRINT CONCAT('seed-tlog: LogSprawl VLF count '", sql[loop:])
+        self.assertNotIn("sp_executesql", sql)  # Msg 17750 on BIN2 servers
+
+    def test_run_lab_logs_real_count_before_proof5(self):
+        sh = self.read("lab", "run-lab.sh")
+        logged = sh.index("ok: LogSprawl VLF count")
+        self.assertIn("sys.dm_db_log_info(DB_ID('LogSprawl'))", sh[:logged])
+        self.assertLess(logged, sh.index('assert-tlog.py" "$OUT/results.json"'))
+        self.assertLess(sh.index("as_sa \"$HERE/seed-tlog.sql\""), logged)
+
+
 if __name__ == "__main__":
     unittest.main()
