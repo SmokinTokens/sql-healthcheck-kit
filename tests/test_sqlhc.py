@@ -803,3 +803,19 @@ class CaseSensitiveCollationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OrphanCheckSafetyTests(unittest.TestCase):
+    """D07 skips built-in users and never advises dropping a user's schemas or objects."""
+
+    def test_d07_skips_builtin_principals(self):
+        chk = next(c for c in DB_CHECKS if c["id"] == "D07")
+        self.assertIn("principal_id > 4", chk["sql"])
+
+    def test_d07_fix_never_drops_objects(self):
+        chk = next(c for c in DB_CHECKS if c["id"] == "D07")
+        fix = chk["fix"].lower()
+        self.assertNotIn("drop any schema", fix)
+        self.assertNotIn("move or drop", fix)
+        self.assertIn("alter authorization on schema", fix)
+        self.assertIn("never drop its schemas", fix)

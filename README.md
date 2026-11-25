@@ -121,9 +121,14 @@ D07 and D08 run in each user database and read catalog views only (`VIEW ANY DEF
 D07 uses Microsoft's own orphan test: a user with `authentication_type_desc = 'INSTANCE'`
 whose SID has no row in `sys.server_principals`
 ([Troubleshoot orphaned users](https://learn.microsoft.com/sql/sql-server/failover-clusters/troubleshoot-orphaned-users-sql-server)).
-Contained users and users without a login are not orphans and are skipped. Windows users
+Contained users and users without a login are not orphans and are skipped. Built-in users
+(`dbo`, `guest`, `INFORMATION_SCHEMA`, `sys`; principal ids 1-4) are skipped as well: a stale
+`dbo` SID after a restore is a database-owner question, so compare `sys.databases.owner_sid`
+before changing anything. Windows users
 are skipped too, as in Microsoft's query: they can still connect through a Windows group
 login. Fix with `ALTER USER ... WITH LOGIN`, not the deprecated `sp_change_users_login`.
+Before dropping an unused user, move ownership of its schemas to an existing principal and
+check dependencies; never drop its schemas or objects as part of this cleanup.
 D08 lists a database-level `CONNECT` grant to `guest` (principal id 2). Microsoft's
 best-practice rule is to revoke it in user databases unless it is needed
 ([Guest permissions on user databases](https://learn.microsoft.com/sql/relational-databases/policy-based-management/guest-permissions-on-user-databases)).

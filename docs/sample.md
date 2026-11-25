@@ -187,7 +187,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 |---|---|
 | lab\_orphan | SQL\_USER |
 
-**Fix:** For each user, either map it to the right login with ALTER USER <user> WITH LOGIN = <login>, or drop it if nobody needs it (first move or drop any schema or objects it owns). Do not use the deprecated sp_change_users_login. If dbo is listed, the database owner login is gone: set a valid owner with ALTER AUTHORIZATION ON DATABASE. Windows users are not listed (they can still get in through a Windows group login).
+**Fix:** For each user, map it to the right login with ALTER USER <user> WITH LOGIN = <login>. If nobody needs it, first move ownership of any schema it owns to an existing principal (ALTER AUTHORIZATION ON SCHEMA::<schema> TO <owner>) and check what depends on it, then drop the user. Never drop its schemas, tables or other objects as part of this cleanup. Do not use the deprecated sp_change_users_login. Built-in users (dbo, guest, INFORMATION_SCHEMA, sys) are not listed. Windows users are not listed (they can still get in through a Windows group login).
 
 ### S06 [LOW] Percent-based file growth (Configuration, \(instance\))
 

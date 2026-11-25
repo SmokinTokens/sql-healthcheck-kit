@@ -366,13 +366,15 @@ FROM sys.database_files""",
 FROM sys.database_principals dp
 LEFT JOIN sys.server_principals sp ON sp.sid = dp.sid
 WHERE sp.sid IS NULL AND dp.authentication_type_desc = 'INSTANCE'
+  AND dp.principal_id > 4
 ORDER BY dp.name""",
         "cols": ["user", "type"], "severity": "low",
-        "fix": "For each user, either map it to the right login with ALTER USER <user> WITH LOGIN = <login>, "
-               "or drop it if nobody needs it (first move or drop any schema or objects it owns). Do not use "
-               "the deprecated sp_change_users_login. If dbo is listed, the database owner login is gone: "
-               "set a valid owner with ALTER AUTHORIZATION ON DATABASE. Windows users are not listed "
-               "(they can still get in through a Windows group login).",
+        "fix": "For each user, map it to the right login with ALTER USER <user> WITH LOGIN = <login>. "
+               "If nobody needs it, first move ownership of any schema it owns to an existing principal "
+               "(ALTER AUTHORIZATION ON SCHEMA::<schema> TO <owner>) and check what depends on it, then drop "
+               "the user. Never drop its schemas, tables or other objects as part of this cleanup. Do not "
+               "use the deprecated sp_change_users_login. Built-in users (dbo, guest, INFORMATION_SCHEMA, sys) "
+               "are not listed. Windows users are not listed (they can still get in through a Windows group login).",
     },
     {
         # guest with CONNECT lets every login without its own user enter the database as guest.
