@@ -45,6 +45,7 @@ as_sa() {  # $1 = sql file; fed on stdin, output withheld (failed batches can ec
 as_sa "$HERE/seed-demo.sql"
 as_sa "$HERE/seed-tlog.sql"
 as_sa "$HERE/seed-qs.sql"
+as_sa "$HERE/seed-certs.sql"
 as_sa "$ROOT/sql/grant-reader.sql"
 as_sa "$HERE/workload.sql"
 
@@ -95,3 +96,7 @@ python3 "$HERE/assert-backup-quality.py" "$OUT/results.json"
 
 # Proof 7: the reader login read Query Store state (D11): QsReadOnly listed, DemoShop not.
 python3 "$HERE/assert-qs.py" "$OUT/results.json"
+
+# Proof 8: the reader login judged the planted certificates (S29): TDE key never exported,
+# backup certificate expiring in 10 days; exported and unused certificates are not listed.
+python3 "$HERE/assert-certs.py" "$OUT/results.json"

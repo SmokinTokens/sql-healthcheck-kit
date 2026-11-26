@@ -30,6 +30,7 @@ IMPACT = {
     "S03": "For the listed databases, this server's backup history shows no log backup in the last 24 hours, so a failure could lose recent work and the log file may keep growing; confirm actual backup coverage.",
     "S26": "These databases' latest full lacks checksums or is damaged, has only copy-only fulls, or cannot be matched to the current copy, so a restore may hide damage or fall short; check the plan with its owner first.",
     "S27": "History shows no native encryption on these databases' latest full; unless protected another way, anyone with a copy could read it, so verify how they are protected before changing anything.",
+    "S29": "These certificates have no recorded private-key export or are expired/expiring for backup encryption; verify safe key copies and backup jobs, since expiry blocks new encrypted backups but not restores.",
     "S04": "These settings can let disk corruption go unnoticed, slow the server down without warning, or let database code gain more rights than intended.",
     "S05": "The databases run on an older query engine level, so they may miss newer query improvements, and a delayed upgrade can carry more risk of slow queries.",
     "S06": "Files set to grow by a percentage can take larger and larger growth steps as they get bigger, which may pause the application while each step is allocated.",
