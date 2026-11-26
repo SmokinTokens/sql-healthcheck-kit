@@ -153,7 +153,8 @@ key a TDE database or encrypted backup cannot be restored on another server
 ([TDE](https://learn.microsoft.com/sql/relational-databases/security/encryption/transparent-data-encryption)).
 It lists `EXPIRED` or `expires within 30 days` only for a certificate that encrypted a backup in
 the last 30 days: TDE does not enforce the expiry date, but a new encrypted backup with an
-expired certificate fails (Msg 3096); restores still work. `expiry_date` is UTC, so S29 compares
+expired certificate fails (Msg 3096, see [Database Engine errors](https://learn.microsoft.com/sql/relational-databases/errors-events/database-engine-events-and-errors)); restores still work
+([CREATE CERTIFICATE, EXPIRY_DATE](https://learn.microsoft.com/sql/t-sql/statements/create-certificate-transact-sql)). `expiry_date` is UTC, so S29 compares
 it with `GETUTCDATE()` and reports it as `expiry_utc`
 ([Backup encryption](https://learn.microsoft.com/sql/relational-databases/backup-restore/backup-encryption)).
 The advice never drops or renews a listed certificate in place: old backups need that exact

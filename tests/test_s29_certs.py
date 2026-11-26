@@ -81,7 +81,8 @@ class S29CheckTests(unittest.TestCase):
         self.assertIn("a copy may still exist", fix)
         self.assertIn("first ask the owner", fix)
         self.assertIn("BACKUP CERTIFICATE ... TO FILE ... WITH PRIVATE KEY", fix)
-        self.assertIn("store the files away from the database backups", fix)
+        self.assertIn("access-controlled copies of both files off this server", fix)
+        self.assertIn("away from the database backups", fix)
         self.assertIn("TDE ignores the date", fix)
         self.assertIn("keep the old certificate for as long as any backup taken with it is kept", fix)
         # Ask-first comes before the backup command.
