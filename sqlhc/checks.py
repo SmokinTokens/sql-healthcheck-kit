@@ -556,27 +556,38 @@ WHERE d.database_id = DB_ID() AND d.log_reuse_wait_desc NOT IN ('NOTHING', 'CHEC
         "id": "D11", "title": "Query Store OFF, READ_ONLY, ERROR or actual mode differs from requested",
         "area": "Configuration",
         "sql": """SELECT q.desired_state_desc, q.actual_state_desc, q.readonly_reason,
+ CONCAT(
+  CASE WHEN q.readonly_reason & 1 <> 0 THEN 'database read-only; ' ELSE '' END,
+  CASE WHEN q.readonly_reason & 2 <> 0 THEN 'single-user; ' ELSE '' END,
+  CASE WHEN q.readonly_reason & 4 <> 0 THEN 'emergency mode; ' ELSE '' END,
+  CASE WHEN q.readonly_reason & 8 <> 0 THEN 'secondary replica; ' ELSE '' END,
+  CASE WHEN q.readonly_reason & 65536 <> 0 THEN 'size limit reached; ' ELSE '' END,
+  CASE WHEN q.readonly_reason & 131072 <> 0 THEN 'statement-count memory limit; ' ELSE '' END,
+  CASE WHEN q.readonly_reason & 262144 <> 0 THEN 'pending-persistence memory limit (temporary); ' ELSE '' END,
+  CASE WHEN q.readonly_reason & 524288 <> 0 THEN 'database disk-size limit; ' ELSE '' END,
+  CASE WHEN q.readonly_reason & ~983055 <> 0
+       THEN CONCAT('unknown bits ', q.readonly_reason & ~983055, '; ') ELSE '' END) AS readonly_detail,
  q.current_storage_size_mb, q.max_storage_size_mb
 FROM sys.database_query_store_options q
 WHERE q.actual_state IN (0, 1, 3) OR q.desired_state <> q.actual_state""",
-        "cols": ["desired_state", "actual_state", "readonly_reason", "storage_mb", "max_storage_mb"],
+        "cols": ["desired_state", "actual_state", "readonly_reason", "readonly_detail", "storage_mb", "max_storage_mb"],
         "severity": "low",
         "fix": ("Agree any change with the database owner first. OFF: Query Store is off by default before "
                 "SQL Server 2022, and restored or upgraded databases keep their old setting; to start capture "
-                "run ALTER DATABASE <db> SET QUERY_STORE = ON (OPERATION_MODE = READ_WRITE) and watch the "
-                "overhead. READ_ONLY when READ_WRITE was requested: readonly_reason is a bitmap, so check "
-                "every bit that is set (65537 = 65536 + 1, for example). Bits 1, 2, 4 and 8 (database "
-                "read-only, single-user, emergency, secondary replica) can be expected: do not change them "
-                "just to restart capture. Bit 65536 means the Query Store size limit was reached: check free "
-                "disk first, then the owner may raise MAX_STORAGE_SIZE_MB and keep SIZE_BASED_CLEANUP_MODE = "
-                "AUTO. Raising the limit does not clear any other bit; look up other bits in Microsoft's "
-                "sys.database_query_store_options page. Set OPERATION_MODE = READ_WRITE again only when no "
-                "remaining bit is an expected state of the database. READ_ONLY on request: someone chose "
-                "it, so ask before changing it. ERROR: set "
-                "OPERATION_MODE = READ_WRITE and check again; on SQL Server 2017+ Microsoft names "
-                "sp_query_store_consistency_check. Do not run SET QUERY_STORE CLEAR or CLEAR ALL as routine "
-                "cleanup: it deletes the captured history that forced plans and Query Store hints rely on, "
-                "so treat it as a separate owner decision."),
+                "run `ALTER DATABASE [name] SET QUERY_STORE = ON (OPERATION_MODE = READ_WRITE)` and watch the "
+                "overhead. READ_ONLY when READ_WRITE was requested: the readonly_detail column decodes every "
+                "bit of readonly_reason. Database read-only, single-user, emergency and secondary replica can "
+                "be expected: do not change them just to restart capture. Size limit reached: check free disk "
+                "first, then the owner may raise MAX_STORAGE_SIZE_MB and keep SIZE_BASED_CLEANUP_MODE = AUTO. "
+                "Statement-count or pending-persistence memory limit: often temporary; check again later "
+                "before changing anything. Database disk-size limit: the database itself is full, a capacity "
+                "question for the owner. Unknown bits: look them up in Microsoft's "
+                "sys.database_query_store_options page before acting. Set OPERATION_MODE = READ_WRITE again "
+                "only when no remaining reason is an expected state of the database. READ_ONLY on request: "
+                "someone chose it, so ask before changing it. ERROR: set OPERATION_MODE = READ_WRITE and "
+                "check again; on SQL Server 2017+ Microsoft names sp_query_store_consistency_check. Do not "
+                "run SET QUERY_STORE CLEAR or CLEAR ALL as routine cleanup: it deletes the captured history "
+                "that forced plans and Query Store hints rely on, so treat it as a separate owner decision."),
     },
 ]
 

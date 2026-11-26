@@ -7,7 +7,7 @@ Exit 0 = proof holds; 1 = invalid input, a check errored or a planted state was 
 import json
 import sys
 
-WIDTH = 5
+WIDTH = 6
 
 
 def _digits(s):
@@ -56,7 +56,7 @@ def main(path):
         got[db] = r
     ro = got["QsReadOnly"]
     if (len(ro) != 1 or ro[0][:2] != ["READ_ONLY", "READ_ONLY"]
-            or not all(_digits(c) for c in ro[0][2:])):
+            or not all(_digits(ro[0][i]) for i in (2, 4, 5))):
         print("FAIL: D11 did not list QsReadOnly as desired READ_ONLY / actual READ_ONLY")
         return 1
     if got["DemoShop"]:

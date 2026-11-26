@@ -14,7 +14,7 @@ assert _spec is not None and _spec.loader is not None
 aq = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(aq)
 
-GOOD = {"QsReadOnly": {"D11": {"rows": [["READ_ONLY", "READ_ONLY", "0", "0", "1000"]]}},
+GOOD = {"QsReadOnly": {"D11": {"rows": [["READ_ONLY", "READ_ONLY", "0", "", "0", "1000"]]}},
         "DemoShop": {"D11": {"rows": []}}}
 
 
@@ -50,11 +50,11 @@ class AssertQsTests(unittest.TestCase):
         self.assertIn("QsReadOnly", out)
 
     def test_wrong_state_fails(self):
-        rc, _ = self.run_on(self.mutate("QsReadOnly", {"rows": [["READ_WRITE", "READ_ONLY", "65536", "1000", "1000"]]}))
+        rc, _ = self.run_on(self.mutate("QsReadOnly", {"rows": [["READ_WRITE", "READ_ONLY", "65536", "size limit reached; ", "1000", "1000"]]}))
         self.assertEqual(rc, 1)
 
     def test_negative_control_fails(self):
-        rc, out = self.run_on(self.mutate("DemoShop", {"rows": [["OFF", "OFF", "0", "0", "1000"]]}))
+        rc, out = self.run_on(self.mutate("DemoShop", {"rows": [["OFF", "OFF", "0", "", "0", "1000"]]}))
         self.assertEqual(rc, 1)
         self.assertIn("negative control", out)
 
@@ -70,10 +70,10 @@ class AssertQsTests(unittest.TestCase):
             rc, out = self.run_on(None, raw=raw)
             self.assertEqual(rc, 1, raw)
             self.assertEqual(len(out.splitlines()), 1, raw)
-        for bad in ({"rows": [["READ_ONLY", "READ_ONLY", "\u00b2", "0", "1000"]]},
-                    {"rows": [["READ_ONLY", "READ_ONLY", "9" * 5000, "0", "1000"]]},
+        for bad in ({"rows": [["READ_ONLY", "READ_ONLY", "\u00b2", "", "0", "1000"]]},
+                    {"rows": [["READ_ONLY", "READ_ONLY", "9" * 5000, "", "0", "1000"]]},
                     {"rows": [["READ_ONLY", "READ_ONLY", "0", "0"]]},
-                    {"rows": [["READ_ONLY", "READ_ONLY", 0, "0", "1000"]]},
+                    {"rows": [["READ_ONLY", "READ_ONLY", 0, "", "0", "1000"]]},
                     {"rows": "x"}, "x"):
             rc, out = self.run_on(self.mutate("QsReadOnly", bad))
             self.assertEqual(rc, 1, bad)
