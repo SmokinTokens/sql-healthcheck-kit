@@ -81,7 +81,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 |---|---|
 | dbo.OrderLines | 400000 |
 
-**Fix:** Add a narrow, ever-increasing clustered key, unless the heap is a staging table by design.
+**Fix:** Review with the table owner first: some heaps are intentional (staging, bulk-load or insert-only tables). If a clustered index is wanted, pick a narrow, ever-increasing key, test it against the real workload, check disk and log space, and create it in an approved maintenance window: it rewrites the table and rebuilds every nonclustered index, and an offline build blocks access to the table.
 
 ### D02 [MEDIUM] Duplicate indexes (same key columns) (Schema, DemoShop)
 

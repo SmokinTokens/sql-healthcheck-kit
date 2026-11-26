@@ -37,6 +37,11 @@ class AdviceSafetyTests(unittest.TestCase):
         fix = next(c for c in DB_CHECKS if c["id"] == "D05")["fix"]
         self.assertIn("full business cycle", fix)
         self.assertIn("month-end", fix)
+        self.assertIn("do not prove an index is unnecessary", fix)
+        self.assertIn("resets", fix)
+        d01 = next(c for c in DB_CHECKS if c["id"] == "D01")["fix"]
+        for phrase in ("table owner", "intentional", "maintenance window", "blocks access"):
+            self.assertIn(phrase, d01)
 
     def test_suspect_page_advice_distinguishes_record_from_read_error_proof(self):
         check = next(c for c in SERVER_CHECKS if c["id"] == "S22")
