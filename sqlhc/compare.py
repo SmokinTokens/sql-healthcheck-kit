@@ -49,6 +49,8 @@ KEY_COLS = {
     # change (OFF -> READ_ONLY) is a changed detail, not a fix plus a new finding.
     "D11": [],
     "S26": ["database"], "S27": ["database"],
+    # S29: one row per certificate name (unique in master); counts and dates are details.
+    "S29": ["certificate"],
 }
 # Checks that return only the top N rows. An item missing from a full top-N list may
 # just have been ranked out, so it is unknown, not fixed.
@@ -70,6 +72,11 @@ WINDOWED = {"S24": "after: failure may only have left the 7-day window or been p
 # database_guid). The run cannot tell these apart, so the row is unknown, never fixed.
 _BACKUP_HISTORY = "after: backup history may have been purged or the database restored; confirm a new full backup"
 WINDOWED.update({"S26": _BACKUP_HISTORY, "S27": _BACKUP_HISTORY})
+# S29 also reads msdb history (which certificate encrypted a backup, and when), and its
+# expiry issue only counts backups from the last 30 days, so a row can drop out by ageing or
+# purging rather than a key export or a new certificate.
+WINDOWED["S29"] = ("after: backup history may have been purged or the last encrypted backup left the "
+                   "30-day window; confirm the private key export or new certificate")
 STATUSES = ("new", "fixed", "changed", "unchanged", "unknown")
 # Checks whose row names an unordered pair: (IX_A, IX_B) and (IX_B, IX_A) are the
 # same finding. D02 orders the pair by index_id, which a drop/recreate can flip.

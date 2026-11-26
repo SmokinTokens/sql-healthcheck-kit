@@ -59,6 +59,7 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 | S23 | `DBCC CHECKDB` overdue or unverifiable (7 days) | medium |
 | S24 | SQL Agent jobs with a failed run in the last 7 days (top 20) | medium |
 | S26 | Last full backup taken without CHECKSUM, flagged damaged, or only copy-only fulls on record | medium |
+| S29 | Certificates protecting TDE or encrypted backups: private key export not recorded, or (backup encryption) expired or expiring within 30 days | medium |
 | D01 | Large heaps | medium |
 | D02 | Duplicate indexes | medium |
 | D08 | `guest` user can connect (CONNECT granted) in a user database | medium |
@@ -138,6 +139,30 @@ record (alone or next to older-copy fulls), S26 lists `history unknown` with `la
 `UNKNOWN`. msdb history covers only backups this instance took and keeps;
 a backup tool that writes elsewhere, or a history cleanup, hides them from both checks.
 For the same reason, `sqlhc.compare` reports an S26/S27 row that disappears as unknown, not fixed.
+
+S29 lists certificates in `master` that a restore depends on: the certificate protecting a
+database's TDE key ([sys.dm_database_encryption_keys](https://learn.microsoft.com/sql/relational-databases/system-dynamic-management-views/sys-dm-database-encryption-keys-transact-sql)
+`encryptor_thumbprint`; tempdb is not counted) or one that encrypted a native backup still in
+`msdb.dbo.backupset` (`encryptor_thumbprint`). It lists `private key export not recorded` when
+[sys.certificates](https://learn.microsoft.com/sql/relational-databases/system-catalog-views/sys-certificates-transact-sql)
+`pvt_key_last_backup_date` is NULL: this server has no record of
+[BACKUP CERTIFICATE](https://learn.microsoft.com/sql/t-sql/statements/backup-certificate-transact-sql)
+... `WITH PRIVATE KEY` for it. That is not proof no copy exists (a certificate created from
+backup files also reads NULL), so ask the owner first. Without the certificate and its private
+key a TDE database or encrypted backup cannot be restored on another server
+([TDE](https://learn.microsoft.com/sql/relational-databases/security/encryption/transparent-data-encryption)).
+It lists `EXPIRED` or `expires within 30 days` only for a certificate that encrypted a backup in
+the last 30 days: TDE does not enforce the expiry date, but a new encrypted backup with an
+expired certificate fails (Msg 3096, see [Database Engine errors](https://learn.microsoft.com/sql/relational-databases/errors-events/database-engine-events-and-errors)); restores still work
+([CREATE CERTIFICATE, EXPIRY_DATE](https://learn.microsoft.com/sql/t-sql/statements/create-certificate-transact-sql)). `expiry_date` is UTC, so S29 compares
+it with `GETUTCDATE()` and reports it as `expiry_utc`
+([Backup encryption](https://learn.microsoft.com/sql/relational-databases/backup-restore/backup-encryption)).
+The advice never drops or renews a listed certificate in place: old backups need that exact
+certificate (matched by thumbprint) to restore. Certificates that protect nothing, TDE keys
+protected by an EKM asymmetric key, and certificates in user databases are out of scope. On SQL
+Server 2022 the DMV needs `VIEW SERVER SECURITY STATE`, which the granted `VIEW SERVER STATE`
+covers. `sqlhc.compare` reports an S29 row that disappears as unknown, not fixed: history may
+have been purged or the last encrypted backup may have left the 30-day window.
 
 S24 and S25 read `msdb.dbo.sysjobs`, `sysjobhistory`, `sysjobschedules` and `sysschedules`
 ([sysjobhistory](https://learn.microsoft.com/sql/relational-databases/system-tables/dbo-sysjobhistory-transact-sql):
@@ -319,7 +344,7 @@ What is different here:
 | | This kit | First Responder Kit |
 |---|---|---|
 | Install on the server | Nothing. Queries are sent from the client | Stored procedures, usually in `master` |
-| Checks | 32 single `SELECT` checks | Hundreds of checks across several procedures |
+| Checks | 33 single `SELECT` checks | Hundreds of checks across several procedures |
 | Login | Least-privilege reader; refuses to run as sysadmin or any write-capable login | Not restricted; some checks need high rights (e.g. trace-flag checks via `DBCC TRACESTATUS`) |
 | Output | One Markdown report, one self-contained HTML report, and JSON | Result sets in SSMS, optional output tables |
 | Query text | Literals redacted by default | Full query text and plans |

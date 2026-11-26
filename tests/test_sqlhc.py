@@ -199,7 +199,7 @@ class ReportTests(unittest.TestCase):
     def test_every_check_has_one_impact_line(self):
         ids = {c["id"] for c in SERVER_CHECKS + DB_CHECKS}
         self.assertEqual(set(IMPACT), ids)
-        self.assertEqual(len(IMPACT), 32)
+        self.assertEqual(len(IMPACT), 33)
         for cid, text in IMPACT.items():
             self.assertTrue(text.endswith("."), cid)
             self.assertNotIn("\n", text, cid)
@@ -1166,3 +1166,14 @@ class D11BitDecodeTests(unittest.TestCase):
         self.assertNotIn("<db>", fix)
         self.assertIn("`ALTER DATABASE [name]", fix)
         self.assertIn("Do not run SET QUERY_STORE CLEAR", fix)
+
+
+class S29OffServerTests(unittest.TestCase):
+    """S29 advice requires off-server copies of the certificate and private key."""
+
+    def test_s29_fix_requires_off_server_copies(self):
+        fix = next(c for c in SERVER_CHECKS if c["id"] == "S29")["fix"]
+        self.assertIn("off this server", fix)
+        self.assertIn("not just another folder here", fix.replace("\n", " "))
+        self.assertIn("password somewhere else", fix)
+        self.assertIn("test a restore", fix)

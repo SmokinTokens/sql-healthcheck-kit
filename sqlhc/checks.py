@@ -152,6 +152,65 @@ WHERE d.name <> 'tempdb' AND d.state = 0 AND f.encryptor_type IS NULL
                "without it the backup cannot be restored.",
     },
     {
+        # Certificates in master that a restore depends on: the TDE protector of a database
+        # (sys.dm_database_encryption_keys.encryptor_thumbprint) or the encryptor of a native
+        # encrypted backup still in msdb history (backupset.encryptor_thumbprint). Two issues:
+        # 1. pvt_key_last_backup_date is NULL: no private-key export (BACKUP CERTIFICATE ... WITH
+        #    PRIVATE KEY) is recorded on this server. It is NOT proof that no copy exists: a
+        #    certificate created from backup files, or copied another way, can also read NULL.
+        # 2. expiry_date has passed or is within 30 days, ONLY for a certificate that encrypted a
+        #    backup in the last 30 days: new encrypted backups fail with an expired certificate
+        #    (Msg 3096), restores still work. TDE does not enforce expiry, so a TDE-only
+        #    certificate is never listed for its date.
+        # expiry_date is in UTC (CREATE CERTIFICATE EXPIRY_DATE), so it is compared with
+        # GETUTCDATE(); backup_finish_date is server-local, so it is compared with GETDATE().
+        # tempdb (database_id 2) is left out of the TDE count: it is encrypted automatically
+        # whenever any user database uses TDE, so it is not a separate dependency.
+        # Unused certificates (no TDE database, no encrypted backup on record) are left out,
+        # including the built-in ##MS_...## ones. The reader needs VIEW ANY DEFINITION
+        # (sys.certificates), VIEW SERVER STATE (the DMV) and SELECT on msdb.dbo.backupset.
+        # Never advise dropping or replacing a listed certificate: old backups need it to restore.
+        # https://learn.microsoft.com/sql/relational-databases/system-catalog-views/sys-certificates-transact-sql
+        # https://learn.microsoft.com/sql/relational-databases/system-dynamic-management-views/sys-dm-database-encryption-keys-transact-sql
+        # https://learn.microsoft.com/sql/relational-databases/security/encryption/transparent-data-encryption
+        # https://learn.microsoft.com/sql/relational-databases/backup-restore/backup-encryption
+        # https://learn.microsoft.com/sql/t-sql/statements/backup-certificate-transact-sql
+        "id": "S29", "title": "Certificates protecting TDE or backups: key export not recorded, or expiring",
+        "area": "Recoverability",
+        "sql": """SELECT c.name, CAST(t.n AS varchar(10)), ISNULL(CONVERT(varchar(19), u.last_used, 120), 'NONE'),
+ ISNULL(CONVERT(varchar(19), c.pvt_key_last_backup_date, 120), 'NOT RECORDED'),
+ CONVERT(varchar(19), c.expiry_date, 120),
+ CONCAT(CASE WHEN c.pvt_key_last_backup_date IS NULL THEN 'private key export not recorded; ' ELSE '' END,
+        CASE WHEN u.last_used >= DATEADD(day, -30, GETDATE()) AND c.expiry_date < GETUTCDATE()
+               THEN 'EXPIRED: new encrypted backups with it fail; '
+             WHEN u.last_used >= DATEADD(day, -30, GETDATE()) AND c.expiry_date < DATEADD(day, 30, GETUTCDATE())
+               THEN 'expires within 30 days: new encrypted backups with it will fail; '
+             ELSE '' END)
+FROM master.sys.certificates c
+CROSS APPLY (SELECT COUNT(*) AS n FROM sys.dm_database_encryption_keys k
+ WHERE k.encryptor_thumbprint = c.thumbprint AND k.database_id <> 2) t
+CROSS APPLY (SELECT MAX(b.backup_finish_date) AS last_used FROM msdb.dbo.backupset b
+ WHERE b.encryptor_thumbprint = c.thumbprint) u
+WHERE (t.n > 0 OR u.last_used IS NOT NULL)
+  AND (c.pvt_key_last_backup_date IS NULL
+       OR (u.last_used >= DATEADD(day, -30, GETDATE()) AND c.expiry_date < DATEADD(day, 30, GETUTCDATE())))""",
+        "cols": ["certificate", "tde_databases", "last_encrypted_backup", "key_exported", "expiry_utc", "issues"],
+        "severity": "medium",
+        "fix": "Do not drop, replace or renew a listed certificate in place: TDE databases and old encrypted "
+               "backups need this exact certificate (matched by thumbprint) to restore. 'Private key export not "
+               "recorded' means this server has no record of BACKUP CERTIFICATE ... WITH PRIVATE KEY for it; a copy "
+               "may still exist (a certificate created from backup files also shows no export), so first ask the "
+               "owner whether the certificate file and private-key file are kept safe. If not, back them up now "
+               "(BACKUP CERTIFICATE ... TO FILE ... WITH PRIVATE KEY (FILE ..., ENCRYPTION BY PASSWORD ...)), store "
+               "access-controlled copies of both files off this server (another machine or secure storage, not "
+               "just another folder here) and away from the database backups, keep the password somewhere else "
+               "again, and test a restore "
+               "on another server. Without them a TDE database or encrypted backup cannot be restored anywhere else. "
+               "'Expires' or 'EXPIRED' applies to backup encryption only (TDE ignores the date): create a new "
+               "certificate, back it up the same way, switch the backup jobs to it, and keep the old certificate "
+               "for as long as any backup taken with it is kept.",
+    },
+    {
         "id": "S04", "title": "Risky database options", "area": "Configuration",
         "sql": """SELECT name,
  CONCAT(CASE WHEN is_auto_shrink_on = 1 THEN 'AUTO_SHRINK ON; ' ELSE '' END,
