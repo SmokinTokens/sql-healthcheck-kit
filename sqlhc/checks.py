@@ -544,6 +544,36 @@ WHERE d.database_id = DB_ID() AND d.log_reuse_wait_desc NOT IN ('NOTHING', 'CHEC
                "normal. This is the reason recorded at the last checkpoint, not a measure of log pressure: "
                "run the check again to see if the reason stays.",
     },
+    {
+        # sys.database_query_store_options: one row for the current database (SQL Server
+        # 2016+). Needs VIEW DATABASE STATE (2016-2019) or VIEW DATABASE PERFORMANCE STATE
+        # (2022+); VIEW SERVER STATE covers both. Flags Query Store OFF (0), READ_ONLY (1)
+        # or ERROR (3), and any desired_state that differs from actual_state (Query Store
+        # can switch to READ_ONLY on its own, e.g. at its size limit). READ_WRITE (2) and a
+        # requested READ_CAPTURE_SECONDARY (4, Query Store for secondary replicas) pass.
+        # https://learn.microsoft.com/sql/relational-databases/system-catalog-views/sys-database-query-store-options-transact-sql
+        # https://learn.microsoft.com/sql/relational-databases/performance/best-practice-with-the-query-store#Verify
+        "id": "D11", "title": "Query Store not capturing (OFF, READ_ONLY, ERROR or not as requested)",
+        "area": "Configuration",
+        "sql": """SELECT q.desired_state_desc, q.actual_state_desc, q.readonly_reason,
+ q.current_storage_size_mb, q.max_storage_size_mb
+FROM sys.database_query_store_options q
+WHERE q.actual_state IN (0, 1, 3) OR q.desired_state <> q.actual_state""",
+        "cols": ["desired_state", "actual_state", "readonly_reason", "storage_mb", "max_storage_mb"],
+        "severity": "low",
+        "fix": ("Agree any change with the database owner first. OFF: Query Store is off by default before "
+                "SQL Server 2022, and restored or upgraded databases keep their old setting; to start capture "
+                "run ALTER DATABASE <db> SET QUERY_STORE = ON (OPERATION_MODE = READ_WRITE) and watch the "
+                "overhead. READ_ONLY when READ_WRITE was requested: read readonly_reason. 65536 means the "
+                "size limit was hit: raise MAX_STORAGE_SIZE_MB (check free disk first) and keep "
+                "SIZE_BASED_CLEANUP_MODE = AUTO, then set OPERATION_MODE = READ_WRITE again. 1, 2, 4 or 8 "
+                "(database read-only, single-user, emergency, secondary replica) are expected and need no "
+                "change. READ_ONLY on request: someone chose it, so ask before changing it. ERROR: set "
+                "OPERATION_MODE = READ_WRITE and check again; on SQL Server 2017+ Microsoft names "
+                "sp_query_store_consistency_check. Do not run SET QUERY_STORE CLEAR or CLEAR ALL as routine "
+                "cleanup: it deletes the captured history that forced plans and Query Store hints rely on, "
+                "so treat it as a separate owner decision."),
+    },
 ]
 
 # Privilege probe: read-only functions only. The runner refuses to run when the

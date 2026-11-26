@@ -45,6 +45,9 @@ KEY_COLS = {
     # D09/D10 return at most one row per database: a new VLF count or wait reason
     # is a changed detail, not a fix plus a new finding.
     "D09": [], "D10": [],
+    # D11: at most one row per database (sys.database_query_store_options), so a state
+    # change (OFF -> READ_ONLY) is a changed detail, not a fix plus a new finding.
+    "D11": [],
     "S26": ["database"], "S27": ["database"],
 }
 # Checks that return only the top N rows. An item missing from a full top-N list may

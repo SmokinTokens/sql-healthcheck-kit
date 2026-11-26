@@ -56,6 +56,7 @@ IMPACT = {
     "D08": "The guest user can connect here, so any login on this server without its own user can enter this database and use whatever rights guest and public hold.",
     "D09": "The transaction log is split into very many small pieces, usually from many tiny growths, which can make restarts, restores and backups of this database slower.",
     "D10": "At its last checkpoint SQL Server recorded a reason it could not reuse space in this database's transaction log; if that reason persists, the log can keep growing until the disk or file limit is hit and writes stop.",
+    "D11": "Query Store is off, read-only, in error or not in the mode that was requested here, so new query and plan history may not be saved for later performance troubleshooting.",
 }
 
 
