@@ -197,8 +197,10 @@ differs from the requested one. Microsoft notes that Query Store can switch to r
 own, most often at its size limit (`readonly_reason` 65536), and says to compare
 `actual_state_desc` with `desired_state_desc` regularly
 ([Verify that Query Store collects query data continuously](https://learn.microsoft.com/sql/relational-databases/performance/best-practice-with-the-query-store#Verify)).
-`readonly_reason` 1, 2, 4 or 8 (database read-only, single-user, emergency, secondary replica)
-is expected. Query Store is off by default before SQL Server 2022, and restored or upgraded
+`readonly_reason` is a bitmap and bits can combine (65537 = size limit + database read-only).
+Bits 1, 2, 4 and 8 (database read-only, single-user, emergency, secondary replica) can be
+expected; raising `MAX_STORAGE_SIZE_MB` clears only the size-limit cause, not the others.
+Query Store is off by default before SQL Server 2022, and restored or upgraded
 databases keep their old setting
 ([Enable the Query Store](https://learn.microsoft.com/sql/relational-databases/performance/monitoring-performance-by-using-the-query-store#enable-the-query-store)),
 so `OFF` is a choice to confirm with the owner, not a fault. The advice never suggests

@@ -1089,7 +1089,9 @@ class QueryStoreCheckTests(unittest.TestCase):
         fix = self.chk()["fix"]
         self.assertTrue(fix.startswith("Agree any change with the database owner first."))
         for phrase in ("OPERATION_MODE = READ_WRITE", "readonly_reason", "65536", "MAX_STORAGE_SIZE_MB",
-                       "check free disk first", "are expected and need no change",
+                       "check free disk first", "readonly_reason is a bitmap", "every bit that is set",
+                       "65537 = 65536 + 1", "do not change them just to restart capture",
+                       "does not clear any other bit", "only when no remaining bit is an expected state",
                        "ask before changing it", "sp_query_store_consistency_check",
                        "Do not run SET QUERY_STORE CLEAR or CLEAR ALL as routine cleanup",
                        "separate owner decision"):

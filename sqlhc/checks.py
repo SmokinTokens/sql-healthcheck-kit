@@ -553,7 +553,7 @@ WHERE d.database_id = DB_ID() AND d.log_reuse_wait_desc NOT IN ('NOTHING', 'CHEC
         # requested READ_CAPTURE_SECONDARY (4, Query Store for secondary replicas) pass.
         # https://learn.microsoft.com/sql/relational-databases/system-catalog-views/sys-database-query-store-options-transact-sql
         # https://learn.microsoft.com/sql/relational-databases/performance/best-practice-with-the-query-store#Verify
-        "id": "D11", "title": "Query Store not capturing (OFF, READ_ONLY, ERROR or not as requested)",
+        "id": "D11", "title": "Query Store OFF, READ_ONLY, ERROR or actual mode differs from requested",
         "area": "Configuration",
         "sql": """SELECT q.desired_state_desc, q.actual_state_desc, q.readonly_reason,
  q.current_storage_size_mb, q.max_storage_size_mb
@@ -564,11 +564,15 @@ WHERE q.actual_state IN (0, 1, 3) OR q.desired_state <> q.actual_state""",
         "fix": ("Agree any change with the database owner first. OFF: Query Store is off by default before "
                 "SQL Server 2022, and restored or upgraded databases keep their old setting; to start capture "
                 "run ALTER DATABASE <db> SET QUERY_STORE = ON (OPERATION_MODE = READ_WRITE) and watch the "
-                "overhead. READ_ONLY when READ_WRITE was requested: read readonly_reason. 65536 means the "
-                "size limit was hit: raise MAX_STORAGE_SIZE_MB (check free disk first) and keep "
-                "SIZE_BASED_CLEANUP_MODE = AUTO, then set OPERATION_MODE = READ_WRITE again. 1, 2, 4 or 8 "
-                "(database read-only, single-user, emergency, secondary replica) are expected and need no "
-                "change. READ_ONLY on request: someone chose it, so ask before changing it. ERROR: set "
+                "overhead. READ_ONLY when READ_WRITE was requested: readonly_reason is a bitmap, so check "
+                "every bit that is set (65537 = 65536 + 1, for example). Bits 1, 2, 4 and 8 (database "
+                "read-only, single-user, emergency, secondary replica) can be expected: do not change them "
+                "just to restart capture. Bit 65536 means the Query Store size limit was reached: check free "
+                "disk first, then the owner may raise MAX_STORAGE_SIZE_MB and keep SIZE_BASED_CLEANUP_MODE = "
+                "AUTO. Raising the limit does not clear any other bit; look up other bits in Microsoft's "
+                "sys.database_query_store_options page. Set OPERATION_MODE = READ_WRITE again only when no "
+                "remaining bit is an expected state of the database. READ_ONLY on request: someone chose "
+                "it, so ask before changing it. ERROR: set "
                 "OPERATION_MODE = READ_WRITE and check again; on SQL Server 2017+ Microsoft names "
                 "sp_query_store_consistency_check. Do not run SET QUERY_STORE CLEAR or CLEAR ALL as routine "
                 "cleanup: it deletes the captured history that forced plans and Query Store hints rely on, "
