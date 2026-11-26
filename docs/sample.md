@@ -12,7 +12,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 
 1. **Databases without a recent full backup (7 days)** (Recoverability, high, \(instance\)): For the listed databases, this server's backup history shows no full backup in the last 7 days, so a disk failure or mistake could lose data unless backups are kept another way; confirm coverage with a test restore.
 2. **FULL recovery databases without log backups (24 h)** (Recoverability, high, \(instance\)): For the listed databases, this server's backup history shows no log backup in the last 24 hours, so a failure could lose recent work and the log file may keep growing; confirm actual backup coverage.
-3. **Suspect pages (823/824 errors) in msdb.dbo.suspect_pages** (Integrity, high, \(instance\)): SQL Server has logged read errors on these database pages, which may mean storage damage and possible data loss; run DBCC CHECKDB and confirm you have good backups.
+3. **Suspect pages (823/824 errors) in msdb.dbo.suspect_pages** (Integrity, high, \(instance\)): A recorded suspect_pages entry flags possible page damage, but is not proof of a read-error event or current corruption; have a DBA run DBCC CHECKDB, check SQL Server and storage logs, and confirm good backups.
 
 ## Summary
 
@@ -57,7 +57,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 |---|---|
 | DemoShop | NEVER |
 
-**Fix:** Add log backups (Microsoft suggests every 15-30 min as a start, more often to lose less data), or switch to SIMPLE if point-in-time restore is not needed. Until then the log keeps growing.
+**Fix:** The log may grow, but missing msdb history alone does not prove blocked log reuse. Check D10 (log_reuse_wait_desc, recorded at the last checkpoint) and confirm the real backup strategy and restore needs with the owner, including external backups or purged history. With owner approval, schedule log backups to meet the recovery-point objective and test restores. Preserve the log-backup chain; do not change recovery model as a shortcut. Any recovery-model change needs separate owner approval, a plan for the log-backup chain and point-in-time restore, and checks for availability groups, log shipping, replication and mirroring.
 
 ### S04 [HIGH] Risky database options (Configuration, \(instance\))
 
@@ -73,7 +73,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 |---|---|---|---|---|---|
 | DemoShop | 1 | 312 | bad checksum | 3 | 2026\-01\-15 08:58:00 |
 
-**Fix:** Treat as possible corruption: run DBCC CHECKDB WITH NO_INFOMSGS, ALL_ERRORMSGS on that database now (as a DBA, in a quiet window), check the storage for errors, and plan a page or full restore from a clean backup. A page can be listed and still be fine. Rows stay in the table after a fix (msdb keeps up to 1,000); a DBA clears old rows.
+**Fix:** A recorded suspect_pages entry is not proof of a read-error event or current corruption: rows can be added or changed manually and can remain after a fix. Treat it as possible corruption: have a DBA run DBCC CHECKDB WITH NO_INFOMSGS, ALL_ERRORMSGS in a quiet window, check SQL Server and storage logs, and confirm clean, tested backups. Plan a page or full restore only if investigation confirms it is needed. A page can be listed and still be fine. msdb keeps up to 1,000 entries; preserve the evidence before any owner-approved cleanup.
 
 ### D01 [MEDIUM] Large heaps (tables without a clustered index) (Schema, DemoShop)
 
@@ -89,7 +89,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 |---|---|---|---|
 | dbo.Orders | IX\_Orders\_Cust | IX\_Orders\_Cust\_Dup | 2 |
 
-**Fix:** Potential duplicates: the keys match, but INCLUDE columns, filters and uniqueness are not compared. Before dropping one, compare the full definitions, keep any index that enforces uniqueness or a constraint, and check index hints that name it. Each extra index adds overhead to inserts, deletes and key updates.
+**Fix:** Potential duplicates: the keys match, but INCLUDE columns, filters and uniqueness are not compared. Never drop unique indexes or indexes backing PRIMARY KEY or UNIQUE constraints as part of this cleanup. Compare the full definitions and usage, check index hints that name either index, and obtain owner approval before removing any other index. Each extra index adds overhead to inserts, deletes and key updates.
 
 ### D08 [MEDIUM] guest user can connect (CONNECT granted) (Security, DemoShop)
 
@@ -180,7 +180,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 | dbo.Orders | IX\_Orders\_Cust | IX\_Orders\_Cust\_Date |
 | dbo.Orders | IX\_Orders\_Cust\_Dup | IX\_Orders\_Cust\_Date |
 
-**Fix:** Potential overlap: the wider index can often serve seeks that use the narrower one, but INCLUDE columns and filters are not compared. Compare the full definitions and usage before dropping.
+**Fix:** Potential overlap: the wider index can often serve seeks that use the narrower one, but INCLUDE columns and filters are not compared. Never drop unique indexes or indexes backing PRIMARY KEY or UNIQUE constraints as part of this cleanup. Compare the full definitions and usage, check index hints that name either index, and obtain owner approval before removing any other index.
 
 ### D04 [LOW] Untrusted foreign keys / check constraints (Schema, DemoShop)
 
@@ -197,7 +197,7 @@ Top 3 category-prioritized findings (data loss before security, then configurati
 | dbo.Orders | IX\_Orders\_Cust | 1 | 0 |
 | dbo.Orders | IX\_Orders\_Cust\_Date | 1 | 0 |
 
-**Fix:** Candidates to drop only after a full business cycle of uptime (month-end included).
+**Fix:** Zero recorded reads do not prove an index is unnecessary. Never drop unique indexes or indexes backing PRIMARY KEY or UNIQUE constraints as part of this cleanup. Observe usage over a full business cycle of uptime (month-end included), accounting for usage-counter resets. Compare the full definitions, including INCLUDE columns and filters, check index hints that name the index, and obtain owner approval before removing any other index.
 
 ### D07 [LOW] Orphaned database users (no matching login) (Security, DemoShop)
 

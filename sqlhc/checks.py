@@ -47,7 +47,13 @@ WHERE d.recovery_model = 1 AND d.name NOT IN ('model') AND d.state = 0
 GROUP BY d.name
 HAVING MAX(b.backup_finish_date) IS NULL OR MAX(b.backup_finish_date) < DATEADD(hour, -24, GETDATE())""",
         "cols": ["database", "last_log_backup"], "severity": "high",
-        "fix": "Add log backups (Microsoft suggests every 15-30 min as a start, more often to lose less data), or switch to SIMPLE if point-in-time restore is not needed. Until then the log keeps growing.",
+        "fix": "The log may grow, but missing msdb history alone does not prove blocked log reuse. "
+               "Check D10 (log_reuse_wait_desc, recorded at the last checkpoint) and confirm the real "
+               "backup strategy and restore needs with the owner, including external backups or purged history. "
+               "With owner approval, schedule log backups to meet the recovery-point objective and test restores. "
+               "Preserve the log-backup chain; do not change recovery model as a shortcut. Any recovery-model "
+               "change needs separate owner approval, a plan for the log-backup chain and point-in-time restore, "
+               "and checks for availability groups, log shipping, replication and mirroring.",
     },
     {
         # Quality of the most recent full backup (type 'D', copy-only included) per online
@@ -307,10 +313,12 @@ FROM msdb.dbo.suspect_pages sp
 WHERE sp.event_type IN (1, 2, 3)
 ORDER BY sp.last_update_date DESC""",
         "cols": ["database", "file_id", "page_id", "error", "count", "last_seen"], "severity": "high",
-        "fix": "Treat as possible corruption: run DBCC CHECKDB WITH NO_INFOMSGS, ALL_ERRORMSGS on that "
-               "database now (as a DBA, in a quiet window), check the storage for errors, and plan a "
-               "page or full restore from a clean backup. A page can be listed and still be fine. "
-               "Rows stay in the table after a fix (msdb keeps up to 1,000); a DBA clears old rows.",
+        "fix": "A recorded suspect_pages entry is not proof of a read-error event or current corruption: "
+               "rows can be added or changed manually and can remain after a fix. Treat it as possible "
+               "corruption: have a DBA run DBCC CHECKDB WITH NO_INFOMSGS, ALL_ERRORMSGS in a quiet window, "
+               "check SQL Server and storage logs, and confirm clean, tested backups. Plan a page or full "
+               "restore only if investigation confirms it is needed. A page can be listed and still be fine. "
+               "msdb keeps up to 1,000 entries; preserve the evidence before any owner-approved cleanup.",
     },
     {
         # DATABASEPROPERTYEX(name, 'LastGoodCheckDbTime'): last successful DBCC CHECKDB;
@@ -407,7 +415,7 @@ GROUP BY t.schema_id, t.name HAVING SUM(p.rows) >= 10000""",
 SELECT OBJECT_SCHEMA_NAME(a.object_id) + '.' + OBJECT_NAME(a.object_id), a.name, b.name, a.keycols
 FROM k a JOIN k b ON a.object_id = b.object_id AND a.keycols = b.keycols AND a.index_id < b.index_id""",
         "cols": ["table", "index_a", "index_b", "key_column_ids"], "severity": "medium",
-        "fix": "Potential duplicates: the keys match, but INCLUDE columns, filters and uniqueness are not compared. Before dropping one, compare the full definitions, keep any index that enforces uniqueness or a constraint, and check index hints that name it. Each extra index adds overhead to inserts, deletes and key updates.",
+        "fix": "Potential duplicates: the keys match, but INCLUDE columns, filters and uniqueness are not compared. Never drop unique indexes or indexes backing PRIMARY KEY or UNIQUE constraints as part of this cleanup. Compare the full definitions and usage, check index hints that name either index, and obtain owner approval before removing any other index. Each extra index adds overhead to inserts, deletes and key updates.",
     },
     {
         "id": "D03", "title": "Left-prefix overlapping indexes", "area": "Schema",
@@ -422,7 +430,7 @@ SELECT OBJECT_SCHEMA_NAME(a.object_id) + '.' + OBJECT_NAME(a.object_id), a.name,
 FROM k a JOIN k b ON a.object_id = b.object_id AND a.index_id <> b.index_id
  AND b.keycols LIKE a.keycols + ',%' AND a.is_unique = 0""",
         "cols": ["table", "narrower_index", "covered_by"], "severity": "low",
-        "fix": "Potential overlap: the wider index can often serve seeks that use the narrower one, but INCLUDE columns and filters are not compared. Compare the full definitions and usage before dropping.",
+        "fix": "Potential overlap: the wider index can often serve seeks that use the narrower one, but INCLUDE columns and filters are not compared. Never drop unique indexes or indexes backing PRIMARY KEY or UNIQUE constraints as part of this cleanup. Compare the full definitions and usage, check index hints that name either index, and obtain owner approval before removing any other index.",
     },
     {
         "id": "D04", "title": "Untrusted foreign keys / check constraints", "area": "Schema",
@@ -444,7 +452,7 @@ WHERE i.index_id > 1 AND i.is_primary_key = 0 AND i.is_unique_constraint = 0
   AND OBJECTPROPERTY(i.object_id, 'IsMsShipped') = 0
   AND s.user_seeks + s.user_scans + s.user_lookups = 0 AND s.user_updates > 0""",
         "cols": ["table", "index", "writes", "reads"], "severity": "low",
-        "fix": "Candidates to drop only after a full business cycle of uptime (month-end included).",
+        "fix": "Zero recorded reads do not prove an index is unnecessary. Never drop unique indexes or indexes backing PRIMARY KEY or UNIQUE constraints as part of this cleanup. Observe usage over a full business cycle of uptime (month-end included), accounting for usage-counter resets. Compare the full definitions, including INCLUDE columns and filters, check index hints that name the index, and obtain owner approval before removing any other index.",
     },
     {
         "id": "D06", "title": "Database file sizes", "area": "Inventory",
