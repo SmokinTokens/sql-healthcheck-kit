@@ -18,6 +18,40 @@ with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 ALL = SERVER_CHECKS + DB_CHECKS + [PRIV_PROBE, DB_PRIV_PROBE]
 
 
+class AdviceSafetyTests(unittest.TestCase):
+    def test_log_backup_advice_requires_strategy_and_reuse_wait_review(self):
+        fix = next(c for c in SERVER_CHECKS if c["id"] == "S03")["fix"]
+        for phrase in ("may grow", "D10", "log_reuse_wait_desc", "backup strategy",
+                       "owner", "log-backup chain"):
+            self.assertIn(phrase, fix)
+        self.assertNotIn("keeps growing", fix)
+        self.assertNotIn("switch to SIMPLE", fix)
+
+    def test_index_removal_advice_preserves_integrity_and_named_dependencies(self):
+        for cid in ("D02", "D03", "D05"):
+            fix = next(c for c in DB_CHECKS if c["id"] == cid)["fix"]
+            with self.subTest(check=cid):
+                for phrase in ("Never drop unique indexes", "PRIMARY KEY", "UNIQUE constraints",
+                               "full definitions", "INCLUDE", "filters", "index hints", "owner"):
+                    self.assertIn(phrase, fix)
+        fix = next(c for c in DB_CHECKS if c["id"] == "D05")["fix"]
+        self.assertIn("full business cycle", fix)
+        self.assertIn("month-end", fix)
+        self.assertIn("do not prove an index is unnecessary", fix)
+        self.assertIn("resets", fix)
+        d01 = next(c for c in DB_CHECKS if c["id"] == "D01")["fix"]
+        for phrase in ("table owner", "intentional", "maintenance window", "blocks access"):
+            self.assertIn(phrase, d01)
+
+    def test_suspect_page_advice_distinguishes_record_from_read_error_proof(self):
+        check = next(c for c in SERVER_CHECKS if c["id"] == "S22")
+        for text in (check["fix"], IMPACT["S22"]):
+            self.assertIn("recorded suspect_pages entry", text)
+            self.assertIn("not proof of a read-error event", text)
+            self.assertIn("DBCC CHECKDB", text)
+        self.assertNotIn("has logged read errors", IMPACT["S22"])
+
+
 class GuardTests(unittest.TestCase):
     def test_every_shipped_check_passes_the_guard(self):
         for chk in ALL:
