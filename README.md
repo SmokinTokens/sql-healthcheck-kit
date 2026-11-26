@@ -73,6 +73,7 @@ plain-language fix. Samples from the demo lab: [docs/sample.md](docs/sample.md) 
 | D05 | Write-only indexes | low |
 | D07 | Orphaned database users: login-based users with no matching login (top 50) | low |
 | D09 | More than 1,000 virtual log files (VLFs) in the transaction log | low |
+| D11 | Query Store OFF, READ_ONLY or ERROR, or not in the requested mode (SQL Server 2016+) | low |
 | S01, S12, S14, D06 | Inventory, top waits, top queries by CPU (redacted), file sizes | context |
 
 The report also warns when uptime is under 7 days (DMV stats reset at restart) and when
@@ -188,6 +189,22 @@ D10 reads `log_reuse_wait_desc` from `sys.databases` and flags any value other t
 ([Factors that can delay log truncation](https://learn.microsoft.com/sql/relational-databases/logs/the-transaction-log-sql-server#factors-that-can-delay-log-truncation)).
 It is a snapshot: a short `ACTIVE_TRANSACTION` or `LOG_SCAN` can be normal, so run it again
 before acting. A FULL-recovery database without log backups shows `LOG_BACKUP` here and in S03.
+D11 reads [`sys.database_query_store_options`](https://learn.microsoft.com/sql/relational-databases/system-catalog-views/sys-database-query-store-options-transact-sql)
+in each user database (SQL Server 2016 and later; `VIEW DATABASE STATE` up to 2019,
+`VIEW DATABASE PERFORMANCE STATE` from 2022; the reader's `VIEW SERVER STATE` covers both).
+It lists a database whose Query Store is `OFF`, `READ_ONLY` or `ERROR`, or whose actual mode
+differs from the requested one. Microsoft notes that Query Store can switch to read-only on its
+own, most often at its size limit (`readonly_reason` 65536), and says to compare
+`actual_state_desc` with `desired_state_desc` regularly
+([Verify that Query Store collects query data continuously](https://learn.microsoft.com/sql/relational-databases/performance/best-practice-with-the-query-store#Verify)).
+`readonly_reason` is a bitmap and bits can combine (65537 = size limit + database read-only).
+Bits 1, 2, 4 and 8 (database read-only, single-user, emergency, secondary replica) can be
+expected; raising `MAX_STORAGE_SIZE_MB` clears only the size-limit cause, not the others.
+Query Store is off by default before SQL Server 2022, and restored or upgraded
+databases keep their old setting
+([Enable the Query Store](https://learn.microsoft.com/sql/relational-databases/performance/monitoring-performance-by-using-the-query-store#enable-the-query-store)),
+so `OFF` is a choice to confirm with the owner, not a fault. The advice never suggests
+`SET QUERY_STORE CLEAR`: it deletes the captured history.
 
 ## Quick start
 
@@ -232,7 +249,8 @@ refuses `sa`, runs the check, then proves the reader login could read both corru
 sources (S22, S23) with `lab/assert-integrity.py`, found the planted orphaned user and
 guest `CONNECT` grant (D07, D08) with `lab/assert-security.py`, and that S26/S27 judge
 three planted backups correctly (a plain full, a full `WITH CHECKSUM`, a copy-only full)
-with `lab/assert-backup-quality.py`. Passwords are random and are never put on
+with `lab/assert-backup-quality.py`, and that D11 lists the `QsReadOnly` database
+(Query Store `READ_ONLY`) but not DemoShop (`READ_WRITE`) with `lab/assert-qs.py`. Passwords are random and are never put on
 a command line; the container keeps `MSSQL_SA_PASSWORD` in its config (`docker inspect`)
 until you remove it. Starting the container sets `ACCEPT_EULA=Y`: by running the script you
 accept the Microsoft SQL Server Developer Edition licence.
@@ -301,7 +319,7 @@ What is different here:
 | | This kit | First Responder Kit |
 |---|---|---|
 | Install on the server | Nothing. Queries are sent from the client | Stored procedures, usually in `master` |
-| Checks | 31 single `SELECT` checks | Hundreds of checks across several procedures |
+| Checks | 32 single `SELECT` checks | Hundreds of checks across several procedures |
 | Login | Least-privilege reader; refuses to run as sysadmin or any write-capable login | Not restricted; some checks need high rights (e.g. trace-flag checks via `DBCC TRACESTATUS`) |
 | Output | One Markdown report, one self-contained HTML report, and JSON | Result sets in SSMS, optional output tables |
 | Query text | Literals redacted by default | Full query text and plans |

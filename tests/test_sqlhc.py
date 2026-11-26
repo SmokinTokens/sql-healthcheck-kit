@@ -199,7 +199,7 @@ class ReportTests(unittest.TestCase):
     def test_every_check_has_one_impact_line(self):
         ids = {c["id"] for c in SERVER_CHECKS + DB_CHECKS}
         self.assertEqual(set(IMPACT), ids)
-        self.assertEqual(len(IMPACT), 31)
+        self.assertEqual(len(IMPACT), 32)
         for cid, text in IMPACT.items():
             self.assertTrue(text.endswith("."), cid)
             self.assertNotIn("\n", text, cid)
@@ -1039,7 +1039,7 @@ class TransactionLogCheckTests(unittest.TestCase):
 
     def test_new_checks_sit_after_d06(self):
         ids = [c["id"] for c in DB_CHECKS]
-        self.assertEqual(ids[ids.index("D06") + 1:], ["D07", "D08", "D09", "D10"])
+        self.assertEqual(ids[ids.index("D06") + 1:], ["D07", "D08", "D09", "D10", "D11"])
 
     def test_findings_and_summary_include_log_checks(self):
         data = ReportTests().fake()
@@ -1065,6 +1065,57 @@ class TransactionLogCheckTests(unittest.TestCase):
         self.assertEqual([x["status"] for x in items], ["changed"])
         after["results"]["db"]["Shop"]["D09"] = {"rows": []}
         items = [x for x in compare(before, after)["items"] if x["check"] == "D09"]
+        self.assertEqual([x["status"] for x in items], ["fixed"])
+
+
+class QueryStoreCheckTests(unittest.TestCase):
+    """D11 (sys.database_query_store_options): shape and advice only; the lab proves the SQL runs."""
+
+    def chk(self):
+        return next(c for c in DB_CHECKS if c["id"] == "D11")
+
+    def test_d11_flags_off_readonly_error_and_mismatch(self):
+        d11 = self.chk()
+        guard(d11["sql"])
+        sql = " ".join(d11["sql"].split())
+        self.assertIn("FROM sys.database_query_store_options q", sql)
+        self.assertIn("WHERE q.actual_state IN (0, 1, 3) OR q.desired_state <> q.actual_state", sql)
+        self.assertNotIn("SELECT *", sql)
+        self.assertEqual(d11["cols"], ["desired_state", "actual_state", "readonly_reason",
+                                       "readonly_detail", "storage_mb", "max_storage_mb"])
+        self.assertEqual((d11["area"], d11["severity"]), ("Configuration", "low"))
+
+    def test_d11_fix_is_owner_led_and_never_clears_history(self):
+        fix = self.chk()["fix"]
+        self.assertTrue(fix.startswith("Agree any change with the database owner first."))
+        for phrase in ("OPERATION_MODE = READ_WRITE", "readonly_reason", "MAX_STORAGE_SIZE_MB",
+                       "check free disk first", "readonly_detail column decodes every", "temporary; check again later",
+                       "disk-size limit", "Unknown bits", "do not change them just to restart capture",
+                       "only when no remaining reason is an expected state",
+                       "ask before changing it", "sp_query_store_consistency_check",
+                       "Do not run SET QUERY_STORE CLEAR or CLEAR ALL as routine cleanup",
+                       "separate owner decision"):
+            self.assertIn(phrase, fix)
+        # The CLEAR warning comes after every action, and no sentence recommends CLEAR.
+        self.assertLess(fix.index("sp_query_store_consistency_check"), fix.index("Do not run SET QUERY_STORE CLEAR"))
+        self.assertEqual(fix.count("CLEAR"), 2)
+
+    def test_findings_and_compare_for_d11(self):
+        from sqlhc.compare import compare
+        data = ReportTests().fake()
+        data["results"]["db"]["Shop"]["D11"] = {"rows": [["READ_WRITE", "READ_ONLY", "65536", "size limit reached; ", "1000", "1000"]]}
+        self.assertIn("D11", [f[0]["id"] for f in findings_of(data)])
+        md, counts, errors = render_markdown(data)
+        self.assertEqual(errors, [])
+        self.assertIn(IMPACT["D11"], md)
+        self.assertIn("65536", md)
+        before, after = ReportTests().fake(), ReportTests().fake()
+        before["results"]["db"]["Shop"]["D11"] = {"rows": [["OFF", "OFF", "0", "", "0", "100"]]}
+        after["results"]["db"]["Shop"]["D11"] = {"rows": [["READ_WRITE", "READ_ONLY", "65536", "size limit reached; ", "100", "100"]]}
+        items = [x for x in compare(before, after)["items"] if x["check"] == "D11"]
+        self.assertEqual([x["status"] for x in items], ["changed"])
+        after["results"]["db"]["Shop"]["D11"] = {"rows": []}
+        items = [x for x in compare(before, after)["items"] if x["check"] == "D11"]
         self.assertEqual([x["status"] for x in items], ["fixed"])
 
 
@@ -1098,3 +1149,20 @@ class S26AdviceSafetyTests(unittest.TestCase):
         self.assertNotIn("take a clean full", fix)
         self.assertIn("before taking any new regular full", fix)
         self.assertIn("differential", fix)
+
+
+class D11BitDecodeTests(unittest.TestCase):
+    """D11 decodes every documented readonly_reason bit and keeps unknown bits visible."""
+
+    def test_d11_sql_decodes_all_documented_bits(self):
+        sql = next(c for c in DB_CHECKS if c["id"] == "D11")["sql"]
+        for bit in ("& 1 ", "& 2 ", "& 4 ", "& 8 ", "& 65536", "& 131072", "& 262144", "& 524288"):
+            self.assertIn(bit, sql)
+        self.assertIn("& ~983055", sql)
+        self.assertEqual(1 | 2 | 4 | 8 | 65536 | 131072 | 262144 | 524288, 983055)
+
+    def test_d11_fix_placeholder_is_code_and_no_routine_clear(self):
+        fix = next(c for c in DB_CHECKS if c["id"] == "D11")["fix"]
+        self.assertNotIn("<db>", fix)
+        self.assertIn("`ALTER DATABASE [name]", fix)
+        self.assertIn("Do not run SET QUERY_STORE CLEAR", fix)
